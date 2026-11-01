@@ -1,7 +1,7 @@
 /* Kablox — service worker (funciona offline após o primeiro carregamento)
  * Para publicar uma atualização: altere VERSION abaixo (ex.: 'gb-1.1.1') e publique de novo.
  */
-const VERSION = 'gb-1.21.0';
+const VERSION = 'gb-1.21.1';
 const ASSETS = [
   './',
   './index.html',
@@ -21,6 +21,7 @@ const ASSETS = [
   './js/menus.js',
   './js/app.js',
   './manifest.webmanifest',
+  './baixar.html', './opiniao.html', './css/site.css', './js/site.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
@@ -66,6 +67,11 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // páginas: responde com o index.html em cache (abre offline)
+  // v1.21.1: as páginas "Como baixar" e "Dê sua opinião" abrem elas mesmas (rede primeiro, cópia guardada se offline)
+  if (req.mode === 'navigate' && /\/(baixar|opiniao)\.html$/.test(url.pathname)) {
+    event.respondWith(fetch(req).catch(() => caches.match(req, { ignoreSearch: true }).then((c) => c || caches.match('./'))));
+    return;
+  }
   if (req.mode === 'navigate') {
     event.respondWith(
       caches.match('./').then((c) => c || caches.match('./index.html'))

@@ -98,6 +98,7 @@
     'Mais {n} estilos para liberar jogando — sem compras.': '{n} more styles to unlock by playing — no purchases.',
     // v1.17 — Aventura, gemas, reviver, alerta
     'Gema coletada!': 'Gem collected!',
+    '💬 Dar opinião sobre o jogo': '💬 Send feedback about the game',
     'Bomba! Explodiu os blocos em volta.': 'Bomb! It blew up the blocks around it.',
     'Estrela! Pontos extras.': 'Star! Bonus points.',
     'Cuidado: quase sem espaço.': 'Careful: almost out of space.',

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; font-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#070b26">
+  <meta name="description" content="Conte o que você achou do Kablox e o que pode melhorar.">
+  <title>Opinião sobre o Kablox</title>
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<main>
+  <div class="top">
+    <a class="back" href="./">← Voltar ao jogo</a>
+    <a class="back" href="baixar.html">Como baixar</a>
+  </div>
+  <div>
+    <h1>Dê sua opinião 💬</h1>
+    <p class="note">Leva 1 minuto. Sua resposta vira uma mensagem que você manda no Direct do
+      <b class="handle" id="handle-name">@othesco.br</b> no Instagram.</p>
+  </div>
+
+  <section class="card">
+    <label class="q" id="q-nota">Que nota você dá para o Kablox?</label>
+    <div class="stars" role="group" aria-labelledby="q-nota" id="stars">
+      <button type="button" data-v="1" aria-pressed="false" aria-label="1 de 5">😕</button>
+      <button type="button" data-v="2" aria-pressed="false" aria-label="2 de 5">😐</button>
+      <button type="button" data-v="3" aria-pressed="false" aria-label="3 de 5">🙂</button>
+      <button type="button" data-v="4" aria-pressed="false" aria-label="4 de 5">😄</button>
+      <button type="button" data-v="5" aria-pressed="false" aria-label="5 de 5">🤩</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <label class="q" id="q-gostou">O que você mais curtiu?</label>
+    <div class="chips" role="group" aria-labelledby="q-gostou" id="liked">
+      <button type="button" aria-pressed="false">Explosões e efeitos</button>
+      <button type="button" aria-pressed="false">Sons</button>
+      <button type="button" aria-pressed="false">Música</button>
+      <button type="button" aria-pressed="false">Estilos de blocos</button>
+      <button type="button" aria-pressed="false">Combos</button>
+      <button type="button" aria-pressed="false">Estrela e Bomba</button>
+      <button type="button" aria-pressed="false">Aventura / Desafios</button>
+      <button type="button" aria-pressed="false">Modo Zen</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <label class="q" id="q-melhorar">O que pode melhorar?</label>
+    <div class="chips" role="group" aria-labelledby="q-melhorar" id="improve">
+      <button type="button" aria-pressed="false">Muito fácil</button>
+      <button type="button" aria-pressed="false">Muito difícil</button>
+      <button type="button" aria-pressed="false">Ficou lento / travou</button>
+      <button type="button" aria-pressed="false">Arrastar as peças</button>
+      <button type="button" aria-pressed="false">Sons ou música</button>
+      <button type="button" aria-pressed="false">Achei um erro</button>
+    </div>
+    <label class="q" for="text">Conte com suas palavras (opcional)</label>
+    <textarea id="text" maxlength="800" placeholder="Ex.: queria um modo com tempo, a peça some quando…"></textarea>
+  </section>
+
+  <section class="card">
+    <label class="q" for="nick">Seu nome ou apelido (opcional)</label>
+    <input type="text" id="nick" maxlength="40" autocomplete="nickname">
+  </section>
+
+  <section class="card">
+    <h2>Sua mensagem</h2>
+    <div class="preview" id="preview" aria-live="polite"></div>
+  </section>
+
+  <button class="btn" id="send">📋 Copiar e abrir o Direct</button>
+  <p class="ok" id="ok" role="status"></p>
+  <p class="note">No Direct, é só <b>colar</b> a mensagem e enviar. Esta página não guarda nem envia nada sozinha:
+    quem manda a mensagem é você, pelo seu Instagram.</p>
+</main>
+<script src="js/site.js"></script>
+</body>
+</html>

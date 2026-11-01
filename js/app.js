@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.21.0';
+  var VERSION = '1.21.1';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   var INLINE = !!window.MZ_INLINE; // versão de prévia em arquivo único (sem service worker)

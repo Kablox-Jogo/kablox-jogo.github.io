@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; font-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#070b26">
+  <meta name="description" content="Kablox: jogo de encaixar blocos. Grátis, sem anúncios, funciona sem internet. Veja como instalar no iPhone e no Android.">
+  <title>Como baixar o Kablox</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<main>
+  <div>
+    <h1 class="wordmark" aria-label="Kablox">KABLO<span class="x">X</span></h1>
+    <p class="tag">Encaixe, limpe linhas, exploda combos.</p>
+  </div>
+
+  <section class="card warn" id="inapp" hidden>
+    <h2>Abra fora do Instagram</h2>
+    <p>Dentro do Instagram não dá para instalar. Toque nos <b>três pontinhos</b> no canto de cima e escolha
+      <b>"Abrir no navegador"</b> (ou "Abrir no Chrome" / "Abrir no Safari"). Depois siga os passos abaixo.</p>
+  </section>
+
+  <section class="card" id="installed" hidden>
+    <h2>Você já tem o Kablox 🎉</h2>
+    <p>Ele está na sua tela inicial e funciona sem internet.</p>
+  </section>
+
+  <a class="btn" href="./">▶ Jogar agora</a>
+  <button class="btn alt" id="install" hidden>⬇ Instalar no celular</button>
+
+  <div class="perks">
+    <div class="perk"><b>📴</b>Funciona offline</div>
+    <div class="perk"><b>🚫</b>Sem anúncios</div>
+    <div class="perk"><b>🆓</b>Grátis, sem conta</div>
+  </div>
+
+  <section class="card">
+    <h2>Como instalar</h2>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-android" aria-selected="true" aria-controls="p-android">Android</button>
+      <button role="tab" id="tab-ios" aria-selected="false" aria-controls="p-ios">iPhone</button>
+    </div>
+
+    <div id="p-android" role="tabpanel" aria-labelledby="tab-android">
+      <ol class="steps">
+        <li><span>Abra este link no <b>Chrome</b>.</span></li>
+        <li><span>Toque nos três pontinhos
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></span>
+          no canto de cima.</span></li>
+        <li><span>Escolha <b>"Instalar app"</b> ou <b>"Adicionar à tela inicial"</b> e confirme.</span></li>
+        <li><span>Pronto: o ícone do Kablox aparece junto dos seus apps.</span></li>
+      </ol>
+    </div>
+
+    <div id="p-ios" role="tabpanel" aria-labelledby="tab-ios" hidden>
+      <ol class="steps">
+        <li><span>Abra este link no <b>Safari</b>.</span></li>
+        <li><span>Toque em Compartilhar
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg></span>
+          (o quadrado com a seta, embaixo).</span></li>
+        <li><span>Role e toque em <b>"Adicionar à Tela de Início"</b>
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg></span>
+          e depois em <b>Adicionar</b>.</span></li>
+        <li><span>Pronto: o Kablox aparece na sua tela inicial.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Depois de instalar</h2>
+    <p>Abra o Kablox <b>uma vez com internet</b> e espere uns segundos. Depois disso ele funciona até no modo avião.
+      Seus recordes ficam guardados no seu próprio celular.</p>
+  </section>
+
+  <a class="btn ghost" href="opiniao.html">💬 Dê sua opinião sobre o jogo</a>
+
+  <p class="foot">Kablox · sem anúncios, sem compras, sem coleta de dados.</p>
+</main>
+<script src="js/site.js"></script>
+</body>
+</html>

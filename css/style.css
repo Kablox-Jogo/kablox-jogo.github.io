@@ -805,3 +805,5 @@ body.anim-full #drag.morph, body.anim-reduced #drag.morph { animation: dragMorph
 @keyframes dragMorph { 40% { filter: brightness(1.9); } }
 /* v1.21: bloco Estrela */
 .popup.star { color: #ffd54a; font-size: 22px; text-shadow: 0 2px 0 #5a2c00, 0 0 14px rgba(255,200,60,.8); }
+/* v1.21.1: link "Dar opinião" nas Configurações (abre opiniao.html) */
+.btn.feedback-link { display: flex; align-items: center; justify-content: center; text-decoration: none; min-height: 48px; margin: 6px 0 10px; }
