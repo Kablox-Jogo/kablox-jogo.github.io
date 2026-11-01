@@ -9,7 +9,7 @@
 
   var Sound = {
     sfxOn: true,
-    musicOn: true,
+    musicOn: false, // v1.21.3: música só toca depois que as opções salvas mandarem (antes começava ligada por padrão)
 
     unlock: function () {
       try {

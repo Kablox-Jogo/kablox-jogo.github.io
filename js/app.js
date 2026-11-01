@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.21.2';
+  var VERSION = '1.21.3';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   var INLINE = !!window.MZ_INLINE; // versão de prévia em arquivo único (sem service worker)
@@ -71,7 +71,11 @@
   function dprCap() { return settings.quality === 'low' ? 1 : settings.quality === 'medium' ? 1.5 : 2; }
   /** Partículas só com animações completas e a opção ligada. */
   function partsOn() { Fx.setCap(settings.quality === 'low' ? 100 : 260); return settings.anim === 'full' && settings.particles; }
-  function vibrate(p) { if (settings.vibrate && navigator.vibrate) { try { navigator.vibrate(p); } catch (e) {} } }
+  // v1.21.3 (relato do dono: "não está vibrando"): pulsos muito curtos (4–16 ms) não chegam a mover o motor de vibração
+  // de muitos celulares Android. Cada pulso agora tem no mínimo 25 ms (as pausas do padrão continuam como estão).
+  var VIB_MIN = 25;
+  function vibPattern(p) { return Array.isArray(p) ? p.map(function (v, i) { return i % 2 ? v : Math.max(VIB_MIN, v); }) : Math.max(VIB_MIN, p); }
+  function vibrate(p) { if (settings.vibrate && navigator.vibrate) { try { navigator.vibrate(vibPattern(p)); } catch (e) {} } }
 
   /* ---------------- sprites dos blocos (cache) ---------------- */
   /** Estilo que aparece agora: o da transformação surpresa (se houver) ou o escolhido pelo jogador. */
@@ -567,7 +571,6 @@
       d.row = row; d.col = col;
       d.valid = Logic.canPlace(state.board, d.shape, row, col);
       d.preview = d.valid ? Logic.previewLines(state.board, d.shape, row, col) : null;
-      if (d.valid && settings.vibrate && d.touch && navigator.vibrate) { try { navigator.vibrate(4); } catch (e) {} } // toque leve ao achar encaixe
       requestRender();
     }
     if (d.over !== over) requestRender();
@@ -696,6 +699,7 @@
     var now = performance.now(), lvl = settings.anim, th = boardTheme(), geo = { cell: L.cell, pad: L.pad, size: L.size };
     var colorOf = function (ci) { var p = pal(th); return p[ci % p.length]; };
     Sound.placeSkin(curSkin());
+    if (!res.lineCount) vibrate(25); // v1.21.3: toque firme a cada peça encaixada
     // encaixe: pequena expansão e retorno + faíscas discretas
     if (lvl !== 'off') anims.push({ type: 'pop', cells: res.placed, color: res.color, theme: th, start: now, dur: lvl === 'full' ? 220 : 140 });
     if (partsOn()) anims.push(Fx.sparks(res.placed, colorOf(res.color), geo, now, anims));
@@ -721,7 +725,7 @@
           anims.push({ type: 'ring', x: L.pad + (rc[1] + 0.5) * L.cell, y: L.pad + (rc[0] + 0.5) * L.cell, reach: 3, color: '#ff8a3a', start: now + 140 + k * 120, dur: 480 });
         }
       });
-      if (spx.bombs.length) { later(function () { Sound.bomb(); if (lvl !== 'off') shake('big'); vibrate([20, 30, 40]); }, 130); announce(T('Bomba! Explodiu os blocos em volta.')); }
+      if (spx.bombs.length) { later(function () { Sound.bomb(); if (lvl !== 'off') shake('big'); vibrate([40, 40, 70]); }, 130); announce(T('Bomba! Explodiu os blocos em volta.')); }
       if (spx.stars.length) { later(function () { Sound.star(); }, 150); announce(T('Estrela! Pontos extras.')); }
     }
     if (res.lineCount > 0) {
@@ -762,7 +766,7 @@
       Sound.clear(res.lineCount, res.combo);
       if (res.combo >= 2) Sound.combo(res.combo);
       if ((res.baseGained || 0) >= 60) Sound.bigScore();
-      vibrate(res.boardClear ? [30, 40, 30, 40, 60] : res.lineCount > 1 ? [18, 30, 24] : 16);
+      vibrate(res.boardClear ? [40, 50, 40, 50, 90] : res.lineCount > 1 ? [35, 40, 45] : 40);
       if (lvl === 'full' && (res.lineCount >= 2 || res.boardClear)) later(function () { shake(res.boardClear || res.lineCount >= 3 ? 'big' : ''); }, charge);
       // cada mensagem em sua faixa, para não se sobreporem: pontos na jogada, elogio, combo, recompensas
       // faixas fixas (em linhas do tabuleiro) para as mensagens não se sobreporem
@@ -1377,7 +1381,7 @@
   function showGameOver() {
     var m = modeOf(), score = state.score;
     Sound.gameover();
-    vibrate(50);
+    vibrate(90);
     if (m === 'zen') {
       showResult({
         title: T('Sem encaixes'), big: fmt(score), sub: T('No Zen a partida não acaba. Limpe as 3 linhas mais cheias e siga jogando.'),
@@ -1961,11 +1965,22 @@
 
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) { saveGame(); saveStats(); Sound.suspend(); if (drag) endDrag(false); }
-    else { Sound.resume(); playClock = Date.now(); requestRender(); }
+    else { syncSavedSettings(); Sound.resume(); playClock = Date.now(); requestRender(); }
   });
+  // v1.21.3 (relato do dono: música voltava ao reabrir, com a opção aparecendo desligada): sempre que o jogo volta
+  // para a tela, ou outra janela do jogo (ex.: o site no navegador + o app instalado) muda as opções, o som segue
+  // exatamente o que está salvo — e a chave na tela também.
+  function syncSavedSettings() {
+    var s = store.get('gb.settings', null);
+    if (!s || typeof s !== 'object') return;
+    ['sound', 'music', 'vibrate'].forEach(function (k) { if (typeof s[k] === 'boolean') settings[k] = s[k]; });
+    ['sfxVol', 'musicVol'].forEach(function (k) { var v = Number(s[k]); if (isFinite(v)) settings[k] = Math.max(0, Math.min(100, v)); });
+    applySettings();
+  }
+  window.addEventListener('pageshow', function () { syncSavedSettings(); });
   window.addEventListener('pagehide', function () { saveGame(); saveStats(); });
   // outra aba apagou os dados: não regravar nada e recarregar
-  window.addEventListener('storage', function (e) { if (e.key === 'gb.wipe' && e.newValue) { wiping = true; location.reload(); } });
+  window.addEventListener('storage', function (e) { if (e.key === 'gb.wipe' && e.newValue) { wiping = true; location.reload(); } else if (e.key === 'gb.settings') syncSavedSettings(); });
 
   /* ---------------- PWA: offline e atualização (js/ui.js) ---------------- */
   window.MZUI.setupPwa({ enabled: !INLINE, beforeUpdate: function () { saveGame(); saveStats(); } });
