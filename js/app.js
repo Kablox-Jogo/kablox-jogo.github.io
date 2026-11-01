@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.21.1';
+  var VERSION = '1.21.2';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   var INLINE = !!window.MZ_INLINE; // versão de prévia em arquivo único (sem service worker)
@@ -774,7 +774,7 @@
       if (word) popup(word, [lane.praise, mid], 'praise t' + (word === T('Imparável!') ? 4 : tier), 0);
       if (res.combo >= 2) { // combo em destaque: número grande + pontos extras do combo; combos altos ganham cor e confete
         var cbCls = 'combo-big' + (res.combo >= 10 ? ' mega' : res.combo >= 5 ? ' hot' : '');
-        popup(T('Combo <b>{n}</b>', { n: res.combo }) + (res.comboBonus > 0 ? ' <small>+' + fmt(res.comboBonus) + '</small>' : ''), [lane.combo, mid], cbCls, 0, true, 120);
+        popup(T('Combo <b>{n}</b>', { n: Math.floor(+res.combo) || 0 }) + (res.comboBonus > 0 ? ' <small>+' + fmt(Math.floor(+res.comboBonus) || 0) + '</small>' : '')  /* v1.21.2: só números entram no HTML */, [lane.combo, mid], cbCls, 0, true, 120);
         if (res.combo >= 5 && partsOn() && !res.boardClear) anims.push(Fx.confetti(pal(th), geo, now + charge + 120, Math.min(70, 20 + res.combo * 4), anims));
         var rec4 = (state.recent || []).slice(-4), streak4 = rec4.length === 4 && rec4.every(function (v) { return v > 0; });
         if (lvl === 'full' && settings.quality !== 'low' && (res.combo >= 5 || streak4)) // efeito temporário: faixas de cor atravessando os blocos
