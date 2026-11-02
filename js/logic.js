@@ -34,17 +34,19 @@
       progress: { perPoints: 1500, step: 0.2, max: 0.8 },
       // DIFICULDADE (0 a 1): sobe suave com os pontos (metade em `halfAt`) e um pouco com o desempenho
       // recente (linhas por jogada nas últimas `recent` jogadas). Nunca muda de repente.
-      difficulty: { halfAt: 2500, curve: 2, skillWeight: 0.3, recent: 12, bigBoost: 2.4, awkwardBoost: 1.0, smallCut: 0.6 },
+      // v1.22 (dono achou fácil demais): sobe mais rápido (halfAt 2500→1200), peças grandes mais cedo (bigBoost 2,4→3,4)
+      // e pesa mais o desempenho (skillWeight 0,3→0,45). Simulação 200 partidas: robô bom mediana 5,7→4,2 min; casual 2,8→2,5 min.
+      difficulty: { halfAt: 1200, curve: 2, skillWeight: 0.45, recent: 12, bigBoost: 3.4, awkwardBoost: 1.0, smallCut: 0.6 },
       // AJUDA (0 a 1): cresce quando o tabuleiro aperta (cheio, pouco espaço útil, muitas jogadas sem limpar):
       // mais peças pequenas, menos peças enormes e, às vezes, um conjunto que permita limpar uma linha.
       // Muda só as chances do sorteio; some sozinha quando o jogador recupera espaço; diminui para quem já
       // tem muitos pontos. Nunca remove blocos, nunca mexe em pontos, nunca garante nada.
       // Valores calibrados com tools/balance_sim.js (2 robôs × 200 partidas × 2 sementes) em 01/11/2026.
       assist: { fillStart: 0.22, fillFull: 0.52, mobilityLow: 0.45, drought: 6, smallBoost: 3, bigCut: 0.2,
-        recoveryChance: 0.5, extraSets: 10, highScoreFade: 0.7, tripleShare: 1,
+        recoveryChance: 0.5, extraSets: 10, highScoreFade: 0.85, tripleShare: 1, // v1.22: ajuda some mais para quem tem muitos pontos (0,7→0,85)
         // v1.19 (pedido do dono): peça de salvação disfarçada — com o tabuleiro apertado, às vezes 1 das 3 peças é
         // sorteada entre as que completam uma linha agora (não sempre a melhor; as outras 2 vêm normais).
-        rescueFrom: 0.35, rescueChance: 0.6 }
+        rescueFrom: 0.35, rescueChance: 0.45 } // v1.22: peça salvadora menos frequente (0,6→0,45; ainda × (1 − dificuldade))
     },
     // v1.21 — blocos especiais (pedido do dono): a partir do nível 3, às vezes 1 bloco de uma peça nova vem especial.
     // Estrela: ao ser limpa dá pontos extras. Bomba: ao ser limpa explode os vizinhos 3×3 (blocos contam pontos).

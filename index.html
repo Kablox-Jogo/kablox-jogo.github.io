@@ -216,6 +216,14 @@
       <label class="row"><span data-i18n>Música</span><input type="checkbox" class="switch" id="set-music" autocomplete="off"></label>
       <label class="vol" for="set-music-vol"><span data-i18n>Volume da música</span><input type="range" id="set-music-vol" min="0" max="100" step="5" autocomplete="off"><output id="out-music-vol"></output></label>
       <label class="row" id="row-vibrate"><span data-i18n>Vibração</span><input type="checkbox" class="switch" id="set-vibrate" autocomplete="off"></label>
+      <div class="row col" id="row-vibstrength">
+        <span id="vibstrength-label" data-i18n>Força da vibração</span>
+        <div class="seg" role="radiogroup" aria-labelledby="vibstrength-label">
+          <label><input type="radio" name="vibStrength" value="light" id="set-vib-light" autocomplete="off"><span data-i18n>Leve</span></label>
+          <label><input type="radio" name="vibStrength" value="normal" id="set-vib-normal" autocomplete="off"><span data-i18n>Normal</span></label>
+          <label><input type="radio" name="vibStrength" value="strong" id="set-vib-strong" autocomplete="off"><span data-i18n>Forte</span></label>
+        </div>
+      </div>
       <label class="row"><span><span data-i18n>Símbolos nos blocos</span><small data-i18n>Formas além da cor</small></span><input type="checkbox" class="switch" id="set-symbols" autocomplete="off"></label>
       <div class="row col">
         <span id="drag-label"><span data-i18n>Sensibilidade do arraste</span><small data-i18n>Quanto a peça anda em relação ao dedo</small></span>
@@ -250,6 +258,13 @@
           <label><input type="radio" name="quality" value="low" id="set-quality-low" autocomplete="off"><span data-i18n>Baixa</span></label>
         </div>
       </div>
+      <div class="row col backup-row">
+        <span><span data-i18n>Seu progresso</span><small data-i18n>Vai trocar de celular? Copie o código, mande para você mesmo (WhatsApp, e-mail) e cole no aparelho novo.</small></span>
+        <div class="backup-btns">
+          <button class="btn" id="btn-backup-copy" data-i18n>📋 Copiar meu progresso</button>
+          <button class="btn" id="btn-backup-restore" data-i18n>📥 Restaurar progresso</button>
+        </div>
+      </div>
       <a class="btn feedback-link" href="opiniao.html" data-i18n>💬 Dar opinião sobre o jogo</a>
       <button class="btn primary" data-action="close-settings" data-i18n>Fechar</button>
       <p class="version">Kablox <span id="version"></span> · <span data-i18n>seus dados ficam só neste aparelho</span></p>
@@ -272,6 +287,7 @@
   <script src="js/fx.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/progress.js"></script>
+  <script src="js/backup.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/surprise.js"></script>
   <script src="js/app.js"></script>

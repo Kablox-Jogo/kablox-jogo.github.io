@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.21.3';
+  var VERSION = '1.22.0';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   var INLINE = !!window.MZ_INLINE; // versão de prévia em arquivo único (sem service worker)
@@ -28,13 +28,14 @@
   try { prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
   var settings = Object.assign(
     { sound: true, music: true, vibrate: true, symbols: false, sfxVol: 80, musicVol: 60, blocks: 'classic', anim: prefersReduced ? 'reduced' : 'full',
-      lang: null, quality: 'high', particles: true, surprise: true, dragSpeed: 1.3 },
+      lang: null, quality: 'high', particles: true, surprise: true, dragSpeed: 1.3, vibStrength: 'normal' },
     store.get('gb.settings', {})
   );
   if (['full', 'reduced', 'off'].indexOf(settings.anim) === -1) settings.anim = 'full';
   settings.blocks = 'classic'; // v1.18 (pedido do dono): não há escolha de estilo — toda partida começa no Clássico e os blocos mudam sozinhos
   if (settings.lang !== 'en' && settings.lang !== 'pt') settings.lang = null; // null = idioma do aparelho
   if (['high', 'medium', 'low'].indexOf(settings.quality) === -1) settings.quality = 'high';
+  if (['light', 'normal', 'strong'].indexOf(settings.vibStrength) === -1) settings.vibStrength = 'normal';
   settings.particles = settings.particles !== false;
   // v1.20: efeitos especiais em 3 níveis (antes: liga/desliga "Mudanças surpresa" — desligado vira 'off')
   if (['full', 'reduced', 'off'].indexOf(settings.fx) === -1) settings.fx = settings.surprise === false ? 'off' : 'full';
@@ -73,9 +74,34 @@
   function partsOn() { Fx.setCap(settings.quality === 'low' ? 100 : 260); return settings.anim === 'full' && settings.particles; }
   // v1.21.3 (relato do dono: "não está vibrando"): pulsos muito curtos (4–16 ms) não chegam a mover o motor de vibração
   // de muitos celulares Android. Cada pulso agora tem no mínimo 25 ms (as pausas do padrão continuam como estão).
-  var VIB_MIN = 25;
-  function vibPattern(p) { return Array.isArray(p) ? p.map(function (v, i) { return i % 2 ? v : Math.max(VIB_MIN, v); }) : Math.max(VIB_MIN, p); }
+  // v1.22 (Entrega 1, pedido do dono): cada momento tem seu "jeito" de vibrar + força leve/normal/forte.
+  // No navegador só dá para controlar a DURAÇÃO (não a força do motor): a força escolhida alonga ou encurta os pulsos.
+  var VIB = { light: { k: 0.6, min: 18 }, normal: { k: 1, min: 25 }, strong: { k: 1.6, min: 32 } };
+  function vibPattern(p) {
+    var v = VIB[settings.vibStrength] || VIB.normal;
+    var one = function (ms) { return Math.max(v.min, Math.round(ms * v.k)); };
+    return Array.isArray(p) ? p.map(function (ms, i) { return i % 2 ? ms : one(ms); }) : one(p);
+  }
   function vibrate(p) { if (settings.vibrate && navigator.vibrate) { try { navigator.vibrate(vibPattern(p)); } catch (e) {} } }
+  /** Tabela de vibrações combinada com o dono (pulso, pausa, pulso…; pausas em ms). */
+  var HAPTIC = {
+    pick: 15,                                   // pegar a peça: toquinho
+    place: 30,                                  // encaixar: "toc" firme
+    invalid: [22, 60, 22],                      // não cabe: "não-não"
+    line: 45,                                   // 1 linha: pulso médio
+    lines: [30, 40, 45, 40, 65],                // várias linhas: pulsos subindo
+    star: [15, 45, 15, 45, 15],                 // estrela: brilho
+    bomb: [70, 25, 160],                        // bomba: "BUUM"
+    celebrate: [40, 60, 40, 60, 40, 60, 140],   // recorde / tabuleiro limpo
+    gameover: [220, 70, 120],                   // fim de jogo: longa e caindo
+    reward: [20, 40, 20]                        // desafio vencido, visual novo
+  };
+  function comboPattern(n) { // combo: pulsos que aceleram conforme o combo cresce
+    var out = [], k = Math.min(6, Math.max(2, n)), gap = Math.max(25, 90 - n * 8);
+    for (var i = 0; i < k; i++) { if (i) out.push(Math.max(20, gap - i * 8)); out.push(30 + i * 6); }
+    return out;
+  }
+  function haptic(name, arg) { vibrate(name === 'combo' ? comboPattern(arg) : HAPTIC[name]); }
 
   /* ---------------- sprites dos blocos (cache) ---------------- */
   /** Estilo que aparece agora: o da transformação surpresa (se houver) ou o escolhido pelo jogador. */
@@ -489,7 +515,7 @@
     e.preventDefault();
     if (kbDrag()) endDrag(false);
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
-    Sound.unlock();
+    Sound.unlock(); haptic('pick');
     var shape = SHAPES[piece.s], cell = L.cell, dpr = L.dpr;
     var w = shape.w * cell, h = shape.h * cell, px = Math.max(1, Math.round(cell * dpr));
     dragCanvas.width = Math.round(w * dpr); dragCanvas.height = Math.round(h * dpr);
@@ -605,7 +631,7 @@
     }
     // volta para a bandeja
     if (d.over) {
-      Sound.invalid(); vibrate(12); announce(T('Não cabe aí.'));
+      Sound.invalid(); haptic('invalid'); announce(T('Não cabe aí.'));
       slot.classList.remove('shake'); void slot.offsetWidth; slot.classList.add('shake');
     }
     requestRender();
@@ -699,7 +725,7 @@
     var now = performance.now(), lvl = settings.anim, th = boardTheme(), geo = { cell: L.cell, pad: L.pad, size: L.size };
     var colorOf = function (ci) { var p = pal(th); return p[ci % p.length]; };
     Sound.placeSkin(curSkin());
-    if (!res.lineCount) vibrate(25); // v1.21.3: toque firme a cada peça encaixada
+    if (!res.lineCount) haptic('place'); // toque firme a cada peça encaixada
     // encaixe: pequena expansão e retorno + faíscas discretas
     if (lvl !== 'off') anims.push({ type: 'pop', cells: res.placed, color: res.color, theme: th, start: now, dur: lvl === 'full' ? 220 : 140 });
     if (partsOn()) anims.push(Fx.sparks(res.placed, colorOf(res.color), geo, now, anims));
@@ -725,8 +751,8 @@
           anims.push({ type: 'ring', x: L.pad + (rc[1] + 0.5) * L.cell, y: L.pad + (rc[0] + 0.5) * L.cell, reach: 3, color: '#ff8a3a', start: now + 140 + k * 120, dur: 480 });
         }
       });
-      if (spx.bombs.length) { later(function () { Sound.bomb(); if (lvl !== 'off') shake('big'); vibrate([40, 40, 70]); }, 130); announce(T('Bomba! Explodiu os blocos em volta.')); }
-      if (spx.stars.length) { later(function () { Sound.star(); }, 150); announce(T('Estrela! Pontos extras.')); }
+      if (spx.bombs.length) { later(function () { Sound.bomb(); if (lvl !== 'off') shake('big'); haptic('bomb'); }, 130); announce(T('Bomba! Explodiu os blocos em volta.')); }
+      if (spx.stars.length) { later(function () { Sound.star(); if (!spx.bombs.length) haptic('star'); }, 150); announce(T('Estrela! Pontos extras.')); }
     }
     if (res.lineCount > 0) {
       var origin = centroid(res.placed);
@@ -766,7 +792,7 @@
       Sound.clear(res.lineCount, res.combo);
       if (res.combo >= 2) Sound.combo(res.combo);
       if ((res.baseGained || 0) >= 60) Sound.bigScore();
-      vibrate(res.boardClear ? [40, 50, 40, 50, 90] : res.lineCount > 1 ? [35, 40, 45] : 40);
+      if (res.boardClear) haptic('celebrate'); else if (res.combo >= 2) haptic('combo', res.combo); else haptic(res.lineCount > 1 ? 'lines' : 'line');
       if (lvl === 'full' && (res.lineCount >= 2 || res.boardClear)) later(function () { shake(res.boardClear || res.lineCount >= 3 ? 'big' : ''); }, charge);
       // cada mensagem em sua faixa, para não se sobreporem: pontos na jogada, elogio, combo, recompensas
       // faixas fixas (em linhas do tabuleiro) para as mensagens não se sobreporem
@@ -801,6 +827,7 @@
     if ((state.mode === 'classic' || state.mode === 'daily') && !state.recordShown && state.startBest > 0 && state.score > state.startBest) {
       state.recordShown = true; recordNow = true;
       popup(T('Novo recorde!'), [SIZE - 1.4, SIZE / 2 - 0.5], 'praise t4', 0, false, res.lineCount ? 750 : 0);
+      later(function () { haptic('celebrate'); }, res.lineCount ? 750 : 0);
       if (lvl !== 'off') anims.push({ type: 'shine', start: now + 200, dur: 900 });
       if (partsOn()) anims.push(Fx.confetti(pal(th), geo, now + 200, 50, anims));
       later(function () { Sound.record(); }, 300);
@@ -1094,7 +1121,7 @@
       toast('✦ ' + T('Novo visual: {name}', { name: T(to.name) }), T(to.msg));
       announce(T('Novo visual: {name}', { name: T(to.name) }) + '.');
       Sound.transform(true);
-      vibrate([12, 40, 12]);
+      haptic('reward');
       if (settings.anim !== 'off' && settings.fx === 'full') { // clarão suave na tela inteira + confete nas cores novas
         var fl = $('#theme-flash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
         if (partsOn() && screenIs('game')) anims.push(Fx.confetti(pal(to), { cell: L.cell, pad: L.pad, size: L.size }, performance.now(), 60, anims));
@@ -1381,7 +1408,7 @@
   function showGameOver() {
     var m = modeOf(), score = state.score;
     Sound.gameover();
-    vibrate(90);
+    haptic('gameover');
     if (m === 'zen') {
       showResult({
         title: T('Sem encaixes'), big: fmt(score), sub: T('No Zen a partida não acaba. Limpe as 3 linhas mais cheias e siga jogando.'),
@@ -1440,7 +1467,7 @@
     }
     later(function () {
       if (won) {
-        Sound.theme(); vibrate([20, 40, 20]);
+        Sound.theme(); haptic('reward');
         showResult({
           title: T('Desafio concluído!'), stars: r.stars, big: T(def.name),
           sub: T('Você usou {p} de {t} peças. 3 estrelas: até {par} peças.', { p: placed, t: def.pieces, par: def.par }),
@@ -1598,7 +1625,7 @@
     if (!Logic.revive(state, Math.random)) { toast(T('Nenhuma peça cabe mais'), ''); return; }
     locked = false; lastSnap = null; anims = anims.filter(function (a) { return a.type !== 'gray'; }); fx.innerHTML = '';
     if (settings.anim !== 'off') { anims.push({ type: 'shine', start: performance.now(), dur: 900 }); var fl = $('#theme-flash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on'); }
-    Sound.transform(true); vibrate([15, 30, 15]);
+    Sound.transform(true); haptic('reward');
     drawTray(true); slots.forEach(function (sl) { sl.classList.remove('revived'); void sl.offsetWidth; sl.classList.add('revived'); });
     playClock = Date.now(); updateHud(); saveGame(); requestRender();
     toast('✦ ' + T('Continuação!'), T('3 peças novas. Seus pontos foram mantidos.'));
@@ -1629,17 +1656,65 @@
     if (!INLINE && /^https:$/.test(location.protocol)) txt += '\n' + location.origin + location.pathname;
     return txt;
   }
+  /* v1.22 (pedido do dono): imagem do resultado para story/WhatsApp — tabuleiro final, pontos, combo, frase de desafio e link.
+   * Feita na hora num canvas (nada sai do aparelho sozinho; quem compartilha é a pessoa). */
+  var GAME_NAME = 'KABLOX', SITE_URL = 'kablox-jogo.github.io';
+  function makeShareImage() {
+    var W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H;
+    var g = c.getContext('2d'), th = THEMES[themeIdx], bt = boardTheme(), m = modeOf();
+    var bg = g.createLinearGradient(0, 0, W * 0.3, H); bg.addColorStop(0, th.bg[0]); bg.addColorStop(1, th.bg[1]);
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    var glow = g.createRadialGradient(W / 2, 120, 40, W / 2, 120, 900); glow.addColorStop(0, 'rgba(255,255,255,.22)'); glow.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = glow; g.fillRect(0, 0, W, H);
+    g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+    var disp = function (px) { return px + "px 'Russo One', 'Rubik', sans-serif"; }, body = function (px) { return '800 ' + px + "px 'Rubik', sans-serif"; };
+    var shadowText = function (txt, x, y, fill, sh) { g.fillStyle = sh || 'rgba(0,0,0,.45)'; g.fillText(txt, x, y + 10); g.fillStyle = fill; g.fillText(txt, x, y); };
+    // nome do jogo (última letra em amarelo, como na tela inicial)
+    g.font = disp(150); var head = GAME_NAME.slice(0, -1), tail = GAME_NAME.slice(-1), wHead = g.measureText(head).width, wTail = g.measureText(tail).width, x0 = W / 2 - (wHead + wTail) / 2;
+    g.textAlign = 'left'; shadowText(head, x0, 230, '#ffffff'); shadowText(tail, x0 + wHead, 230, '#ffc21e', '#b4410a'); g.textAlign = 'center';
+    var modeName = { classic: T('Clássico'), zen: T('Zen'), daily: T('Desafio do dia'), challenge: state.chId ? T(challengeDef(state.chId).name) : T('Desafios') }[m] || T('Clássico');
+    g.font = body(46); g.fillStyle = 'rgba(255,255,255,.85)'; g.fillText(modeName.toUpperCase(), W / 2, 320);
+    g.font = disp(170); shadowText(fmt(state.score), W / 2, 500, '#ffffff');
+    var info = [];
+    if (state.maxCombo > 1) info.push(T('Combo máx. ×{n}', { n: state.maxCombo }));
+    info.push(T('Nível {n}', { n: Logic.levelFor(state.lines || 0) }));
+    g.font = body(48); g.fillStyle = '#ffd54a'; g.fillText(info.join('  ·  '), W / 2, 580);
+    // tabuleiro final
+    var bs = 800, bx = (W - bs) / 2, by = 640, pad = 22, cell = (bs - pad * 2) / SIZE, px = Math.round(cell);
+    Themes.roundRect(g, bx, by, bs, bs, 44); g.fillStyle = bt.board; g.fill();
+    g.lineWidth = 6; g.strokeStyle = 'rgba(255,255,255,.18)'; g.stroke();
+    for (var r = 0; r < SIZE; r++) for (var cc = 0; cc < SIZE; cc++) {
+      var v = state.board[r * SIZE + cc];
+      g.drawImage(sprite(bt, v < 0 ? -1 : v, px), bx + pad + cc * cell, by + pad + r * cell, cell, cell);
+    }
+    g.font = disp(76); shadowText(T('Me bate se for capaz!'), W / 2, 1560, '#ffffff');
+    g.font = body(50); g.fillStyle = '#4fe3ff'; g.fillText(T('Jogue grátis: {url}', { url: SITE_URL }), W / 2, 1650);
+    return new Promise(function (res, rej) { c.toBlob(function (b) { b ? res(b) : rej(new Error('sem imagem')); }, 'image/png'); });
+  }
+  function saveImage(blob) {
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = GAME_NAME.toLowerCase() + '-resultado.png'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    toast(T('Imagem salva!'), T('Está na sua galeria ou em Downloads — poste no story e desafie os amigos.'));
+  }
   function shareResult() {
     var text = shareText();
+    var fontsReady = document.fonts && document.fonts.load ? Promise.all([document.fonts.load("150px 'Russo One'"), document.fonts.load("800 50px 'Rubik'")]).catch(function () {}) : Promise.resolve();
+    fontsReady.then(makeShareImage).then(function (blob) {
+      var file = null;
+      try { file = new File([blob], GAME_NAME.toLowerCase() + '-resultado.png', { type: 'image/png' }); } catch (e) {}
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        return navigator.share({ files: [file], text: text }).catch(function (err) { if (!err || err.name !== 'AbortError') saveImage(blob); });
+      }
+      saveImage(blob);
+    }).catch(function () { shareText_(); });
     function copy() {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(function () { toast(T('Resultado copiado'), T('Cole onde quiser compartilhar.')); },
           function () { toast(T('Copie o resultado'), text); });
       } else toast(T('Copie o resultado'), text);
     }
-    if (navigator.share) {
-      navigator.share({ text: text }).catch(function (err) { if (!err || err.name !== 'AbortError') copy(); });
-    } else copy();
+    function shareText_() { if (navigator.share) navigator.share({ text: text }).catch(function (err) { if (!err || err.name !== 'AbortError') copy(); }); else copy(); }
   }
 
   /* ---------------- tutorial interativo (pulável, repetível na Ajuda) ---------------- */
@@ -1801,7 +1876,8 @@
     $('#set-symbols').checked = !!settings.symbols;
     $('#set-particles').checked = !!settings.particles;
     var fxr = document.querySelector('input[name="fx"][value="' + settings.fx + '"]'); if (fxr) fxr.checked = true;
-    ['lang', 'quality', 'dragSpeed'].forEach(function (k) {
+    $('#row-vibstrength').hidden = !navigator.vibrate || !settings.vibrate;
+    ['lang', 'quality', 'dragSpeed', 'vibStrength'].forEach(function (k) {
       var v = k === 'lang' ? I18n.lang : settings[k], el = document.querySelector('input[name="' + k + '"][value="' + v + '"]');
       if (el) el.checked = true;
     });
@@ -1822,7 +1898,10 @@
     });
     inp.addEventListener('change', saveSettings);
   });
-  $('#set-vibrate').addEventListener('change', function (e) { settings.vibrate = e.target.checked; saveSettings(); vibrate(20); });
+  $('#set-vibrate').addEventListener('change', function (e) { settings.vibrate = e.target.checked; saveSettings(); applySettings(); haptic('place'); });
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="vibStrength"]'), function (r) {
+    r.addEventListener('change', function () { settings.vibStrength = r.value; saveSettings(); haptic('lines'); });
+  });
   $('#set-symbols').addEventListener('change', function (e) { settings.symbols = e.target.checked; saveSettings(); setSkin(settings.blocks); });
   $('#set-particles').addEventListener('change', function (e) { settings.particles = e.target.checked; saveSettings(); });
   Array.prototype.forEach.call(document.querySelectorAll('input[name="fx"]'), function (r) {
@@ -1911,6 +1990,74 @@
     else startGame(m, { chId: state.chId });
   });
 
+  /* ---------------- v1.22: backup do progresso por código (js/backup.js) ---------------- */
+  function backupCode() {
+    saveGame(); saveStats();
+    var data = {};
+    window.MZBackup.KEYS.forEach(function (k) { var v = store.get(k, null); if (v !== null) data[k] = v; });
+    return window.MZBackup.encode(data);
+  }
+  function copyProgress() {
+    var code = backupCode();
+    var done = function () { toast(T('Progresso copiado!'), T('Cole no WhatsApp ou e-mail e mande para você mesmo.')); };
+    var manual = function () { showCodeDialog(code); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, manual);
+    else manual();
+  }
+  function showCodeDialog(code) { // celular sem permissão de copiar: mostra o código para copiar à mão
+    var card = $('#dialog-card'); card.innerHTML = '';
+    var h = el('h2', '', T('Seu código de progresso')); h.id = 'dialog-title'; card.appendChild(h);
+    card.appendChild(el('p', 'muted', T('Segure no texto, escolha "Selecionar tudo" e "Copiar".')));
+    var ta = el('textarea'); ta.id = 'restore-code'; ta.readOnly = true; ta.value = code; card.appendChild(ta);
+    var b = el('button', 'btn primary', T('Fechar')); b.addEventListener('click', closeDialog);
+    var st = el('div', 'stack'); st.appendChild(b); card.appendChild(st);
+    openOverlay('#ov-dialog'); setTimeout(function () { try { ta.focus(); ta.select(); } catch (e) {} }, 80);
+  }
+  /** Confere cada parte do backup como o jogo confere o que lê do armazenamento. Retorna só o que é válido. */
+  function validBackup(data) {
+    var out = {}, n = 0;
+    if (data['gb.stats'] && typeof data['gb.stats'] === 'object') { try { out['gb.stats'] = Progress.normalize(data['gb.stats']); n++; } catch (e) {} }
+    if (data['gb.settings'] && typeof data['gb.settings'] === 'object' && !Array.isArray(data['gb.settings'])) out['gb.settings'] = data['gb.settings'];
+    if (data['gb.tutorialDone'] === true) out['gb.tutorialDone'] = true;
+    ['classic', 'zen', 'daily', 'challenge'].forEach(function (m) {
+      var v = data['gb.save.' + m]; if (v && Logic.isValidState(v)) { out['gb.save.' + m] = v; n++; }
+    });
+    return n ? out : null;
+  }
+  function openRestore() {
+    var card = $('#dialog-card'); card.innerHTML = '';
+    var h = el('h2', '', T('Restaurar progresso')); h.id = 'dialog-title'; card.appendChild(h);
+    card.appendChild(el('p', 'muted', T('Cole aqui o código que você copiou no outro celular. O progresso deste aparelho será trocado pelo do código.')));
+    var ta = el('textarea'); ta.id = 'restore-code'; ta.setAttribute('autocomplete', 'off'); ta.setAttribute('spellcheck', 'false');
+    ta.setAttribute('aria-label', T('Código de progresso')); card.appendChild(ta);
+    var msg = el('p', 'restore-msg'); msg.setAttribute('role', 'status'); card.appendChild(msg);
+    var st = el('div', 'stack'), ok = el('button', 'btn confirm', T('Restaurar')), no = el('button', 'btn primary', T('Cancelar'));
+    var armed = false;
+    ok.addEventListener('click', function () {
+      var r = window.MZBackup.decode(ta.value), data = r.ok ? validBackup(r.data) : null;
+      if (!data) {
+        msg.className = 'restore-msg bad';
+        msg.textContent = r.error === 'check' ? T('O código está incompleto ou foi alterado. Copie de novo, inteiro.') : T('Esse código não é um progresso do jogo. Confira se colou o código inteiro.');
+        armed = false; ok.textContent = T('Restaurar'); return;
+      }
+      if (!armed) { // confirmação na própria janela (nada de alert/confirm)
+        armed = true; msg.className = 'restore-msg good'; ok.textContent = T('Toque de novo para trocar o progresso');
+        msg.textContent = T('Código válido! O progresso atual deste celular será substituído.'); return;
+      }
+      wiping = true;
+      try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('gb.') === 0 && k !== 'gb.wipe') localStorage.removeItem(k); }); } catch (e) {}
+      Object.keys(data).forEach(function (k) { store.set(k, data[k]); });
+      try { localStorage.setItem('gb.restored', String(Date.now())); } catch (e) {}
+      location.reload();
+    });
+    ta.addEventListener('input', function () { armed = false; ok.textContent = T('Restaurar'); msg.textContent = ''; });
+    no.addEventListener('click', closeDialog);
+    st.appendChild(ok); st.appendChild(no); card.appendChild(st);
+    openOverlay('#ov-dialog'); setTimeout(function () { try { ta.focus(); } catch (e) {} }, 80);
+  }
+  $('#btn-backup-copy').addEventListener('click', function () { Sound.tap(); copyProgress(); });
+  $('#btn-backup-restore').addEventListener('click', function () { Sound.tap(); closeOverlay('#ov-settings'); openRestore(); });
+
   /** Apaga tudo o que o jogo guardou neste aparelho. */
   function resetAll() {
     wiping = true;
@@ -1974,6 +2121,7 @@
     var s = store.get('gb.settings', null);
     if (!s || typeof s !== 'object') return;
     ['sound', 'music', 'vibrate'].forEach(function (k) { if (typeof s[k] === 'boolean') settings[k] = s[k]; });
+    if (['light', 'normal', 'strong'].indexOf(s.vibStrength) !== -1) settings.vibStrength = s.vibStrength;
     ['sfxVol', 'musicVol'].forEach(function (k) { var v = Number(s[k]); if (isFinite(v)) settings[k] = Math.max(0, Math.min(100, v)); });
     applySettings();
   }
@@ -1987,6 +2135,7 @@
 
   /* ---------------- início ---------------- */
   $('#version').textContent = 'v' + VERSION;
+  try { if (localStorage.getItem('gb.restored')) { localStorage.removeItem('gb.restored'); setTimeout(function () { toast(T('Progresso restaurado!'), T('Seus recordes e conquistas estão de volta.')); }, 600); } } catch (e) {}
   applySettings();
   Sound.setTheme(THEMES[0]);
   applyTheme(0, false);
@@ -2025,6 +2174,7 @@
     },
     look: function (id, animate) { state.themeId = id; themeIdx = Themes.indexOfId(id); applyTheme(themeIdx, !!animate); },
     transform: function (skin, big) { if (!state.look) state.look = { skin: null, left: 0, last: [], since: 99 }; applyLook(skin, [SIZE / 2 - 0.5, SIZE / 2 - 0.5], { big: !!big }); },
+    shareImage: function () { return makeShareImage(); }, share: function () { shareResult(); },
     load: function (s) { state = s; themeIdx = Themes.indexOfId(s.themeId); applyTheme(themeIdx, false); drawTray(false); updateHud(); render(); }
   };
 })();

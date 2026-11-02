@@ -807,3 +807,11 @@ body.anim-full #drag.morph, body.anim-reduced #drag.morph { animation: dragMorph
 .popup.star { color: #ffd54a; font-size: 22px; text-shadow: 0 2px 0 #5a2c00, 0 0 14px rgba(255,200,60,.8); }
 /* v1.21.1: link "Dar opinião" nas Configurações (abre opiniao.html) */
 .btn.feedback-link { display: flex; align-items: center; justify-content: center; text-decoration: none; min-height: 48px; margin: 6px 0 10px; }
+
+/* v1.22: backup do progresso por código */
+.backup-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.backup-btns .btn { min-height: 44px; font-size: 14px; padding: 8px 10px; }
+#restore-code { width: 100%; min-height: 110px; margin: 10px 0 4px; padding: 10px; border-radius: 12px; border: 1px solid var(--card-line, rgba(255,255,255,.15));
+  background: rgba(0,0,0,.35); color: var(--card-text, #eef1ff); font: 600 13px/1.35 ui-monospace, Menlo, Consolas, monospace; word-break: break-all; resize: vertical; }
+.restore-msg { min-height: 1.3em; font-size: 14px; margin: 4px 0 8px; }
+.restore-msg.bad { color: #ff8fa6; } .restore-msg.good { color: #7ff0b0; }
