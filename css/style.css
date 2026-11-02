@@ -817,3 +817,30 @@ body.anim-full #drag.morph, body.anim-reduced #drag.morph { animation: dragMorph
 .restore-msg.bad { color: #ff8fa6; } .restore-msg.good { color: #7ff0b0; }
 
 #btn-vib-test { margin-top: 8px; min-height: 42px; font-size: 14px; }
+
+/* v1.23: aviso "Versão nova! Ver novidades / Agora não" (mesmo jeito da barra de atualização) */
+#news-bar { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 12px); transform: translateX(-50%); z-index: 80;
+  display: flex; gap: 8px; align-items: center; padding: 6px 6px 6px 14px; background: rgba(10,14,22,.94); border-radius: 16px;
+  color: #fff; font-weight: 700; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.45); max-width: calc(100vw - 24px); }
+#news-bar .btn.small { min-height: 40px; white-space: nowrap; }
+.news-ver { margin: 12px 0 2px; font-weight: 800; color: var(--accent, #ffc21e); }
+
+/* v1.23: Configurações em seções */
+.set-sec { margin: 18px 0 4px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--card-muted, #a9b1db); font-family: var(--font-fun); font-weight: 800; }
+.set-sec:first-of-type { margin-top: 6px; }
+.set-sec[hidden] { display: none; }
+.more-opts { margin: 4px 0 6px; border-radius: 12px; background: rgba(255,255,255,.04); padding: 2px 10px 6px; }
+.more-opts > summary { cursor: pointer; padding: 10px 0; font-weight: 800; color: var(--card-muted, #a9b1db); list-style: none; }
+.more-opts > summary::-webkit-details-marker { display: none; }
+.more-opts > summary::before { content: '▸ '; } .more-opts[open] > summary::before { content: '▾ '; }
+#ov-settings .row.col { gap: 6px; }
+#ov-settings .set-sec { margin-top: 14px; }
+
+/* v1.23: menos poluição na partida */
+.popup.pts-small { font-size: clamp(16px, 4.6vw, 20px); opacity: .95; }
+#lvl-pct[hidden], #lvl-m[hidden] { display: none !important; }
+#best-mini { opacity: .62; transition: opacity .3s, filter .3s; }
+#best-mini.text { opacity: 1; }
+#best-mini.near { opacity: 1; filter: drop-shadow(0 0 8px rgba(255,194,30,.7)); }
+#best-mini.near #best { color: var(--accent, #ffc21e); }
+.home-best[hidden] { display: none !important; }

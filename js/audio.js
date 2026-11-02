@@ -234,20 +234,22 @@
       for (var i = 0; i < 4; i++) this._noise({ filter: 'bandpass', freq: 1500 + Math.random() * 1500, q: 3, dur: 0.035, vol: 0.08, delay: 0.08 + i * 0.06 + Math.random() * 0.03 });
     },
     invalid: function () { this._tone(170, { to: 120, dur: 0.16, vol: 0.12, type: 'triangle' }); },
-    clear: function (lines, combo) {
+    /** Linha limpa (v1.23, menos poluição sonora): 1 som principal (escala subindo) + no máximo 1 detalhe.
+     *  accent: 'boom' (grave macio) quando o estilo não tem som de quebra próprio; null quando outro som já é o detalhe. */
+    clear: function (lines, combo, accent) {
       var sc = theme.scale, base = theme.root + 12 + Math.min(combo || 0, 6) * 2;
-      var n = Math.min(2 + lines, 7);
+      var n = Math.min(2 + lines, 6);
       for (var i = 0; i < n; i++) {
         var note = base + sc[i % sc.length] + 12 * Math.floor(i / sc.length);
-        this._tone(midi(note), { dur: 0.38, vol: 0.09, delay: i * 0.065 });
-        this._tone(midi(note + 12), { dur: 0.22, vol: 0.03, delay: i * 0.065, type: 'triangle' });
+        this._tone(midi(note), { dur: 0.34, vol: 0.09, delay: i * 0.065 });
       }
-      // v1.21: "boom" grave e macio por baixo + brilhinhos subindo no fim (mais satisfatório)
-      this._tone(330, { to: 250, dur: 0.85, vol: 0.06, type: 'sine' });
-      this._noise({ filter: 'lowpass', freq: 700, toFreq: 180, dur: 0.5, vol: 0.06, attack: 0.01 });
-      var sp = [1319, 1568, 1976, 2349, 2637], m = Math.min(sp.length, 2 + lines);
-      for (var k = 0; k < m; k++) this._tone(sp[k] * (1 + Math.min(combo || 0, 6) * 0.02), { dur: 0.16, vol: 0.028, type: 'sine', delay: 0.12 + n * 0.04 + k * 0.045 });
+      if (accent === 'boom') {
+        this._tone(330, { to: 250, dur: 0.7, vol: 0.06, type: 'sine' });
+        this._noise({ filter: 'lowpass', freq: 700, toFreq: 180, dur: 0.4, vol: 0.05, attack: 0.01 });
+      }
     },
+    /** v1.23: o estilo tem som de quebra próprio? (aí ele é o "detalhe" da linha limpa) */
+    hasBreak: function (skin) { return /^(ice|stone|fur|wool|jelly|cheese|neon|candy|pixel|crystal|metal|galaxy|energy|rainbow|holo|lava|gold|bubble|ocean|circuit|stained|marble|glossy|gradient|wood)$/.test(skin || ''); },
     theme: function () {
       var r = theme.root + 12;
       [0, 4, 7, 12].forEach(function (s, i) { Sound._tone(midi(r + s), { dur: 1.1, vol: 0.07, delay: i * 0.09 }); });

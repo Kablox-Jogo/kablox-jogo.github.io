@@ -158,7 +158,7 @@
       <div class="theme-bar">
         <span class="lvl-chip" id="lvl-chip" aria-hidden="true"><b id="lvl-n">1</b><i id="lvl-m">×1</i></span>
         <div class="progress" aria-hidden="true"><div id="lvl-progress"></div></div>
-        <span id="lvl-pct" aria-hidden="true">0%</span>
+        <span id="lvl-pct" aria-hidden="true" hidden>0%</span>
         <span class="combo-chip" id="combo-chip" hidden aria-hidden="true"><b id="combo-x">×2</b><i></i><i></i><i></i></span>
       </div>
       <div class="sr-only" id="announcer" aria-live="polite" aria-atomic="true"></div>
@@ -185,6 +185,7 @@
   <canvas id="drag" hidden></canvas>
   <div id="toast" role="status" aria-live="polite"><svg id="toast-icon" width="34" height="34" aria-hidden="true"><use href="#i-trophy"/></svg><strong id="toast-title"></strong><span id="toast-text"></span></div>
   <div id="update-bar" hidden><span data-i18n>Nova versão disponível</span><button class="btn small primary" id="btn-update" data-i18n>Atualizar</button><button class="btn small" id="btn-update-later" data-i18n>Depois</button></div>
+  <div id="news-bar" class="float-bar" hidden><span data-i18n>✨ Versão nova!</span><button class="btn small primary" id="btn-news-show" data-i18n>Ver novidades</button><button class="btn small" id="btn-news-later" data-i18n>Agora não</button></div>
 
   <!-- PAUSA -->
   <div class="overlay" id="ov-pause" hidden>
@@ -204,20 +205,15 @@
   <div class="overlay" id="ov-settings" hidden>
     <div class="card scrollable" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <h2 id="settings-title" data-i18n>Configurações</h2>
-      <div class="row col">
-        <span id="lang-label" data-i18n>Idioma</span>
-        <div class="seg" role="radiogroup" aria-labelledby="lang-label">
-          <label><input type="radio" name="lang" value="en" id="set-lang-en" autocomplete="off"><span lang="en">English</span></label>
-          <label><input type="radio" name="lang" value="pt" id="set-lang-pt" autocomplete="off"><span lang="pt-BR">Português</span></label>
-        </div>
-      </div>
+      <h3 class="set-sec" data-i18n>🔊 Som</h3>
       <label class="row"><span data-i18n>Efeitos sonoros</span><input type="checkbox" class="switch" id="set-sound" autocomplete="off"></label>
       <label class="vol" for="set-sfx-vol"><span data-i18n>Volume dos efeitos</span><input type="range" id="set-sfx-vol" min="0" max="100" step="5" autocomplete="off"><output id="out-sfx-vol"></output></label>
       <label class="row"><span data-i18n>Música</span><input type="checkbox" class="switch" id="set-music" autocomplete="off"></label>
       <label class="vol" for="set-music-vol"><span data-i18n>Volume da música</span><input type="range" id="set-music-vol" min="0" max="100" step="5" autocomplete="off"><output id="out-music-vol"></output></label>
-      <label class="row" id="row-vibrate"><span data-i18n>Vibração</span><input type="checkbox" class="switch" id="set-vibrate" autocomplete="off"></label>
+      <h3 class="set-sec" id="sec-vibrate" data-i18n>📳 Vibração</h3>
+      <label class="row" id="row-vibrate"><span data-i18n>Vibrar</span><input type="checkbox" class="switch" id="set-vibrate" autocomplete="off"></label>
       <div class="row col" id="row-vibstrength">
-        <span id="vibstrength-label" data-i18n>Força da vibração</span>
+        <span id="vibstrength-label" class="sr-only" data-i18n>Força da vibração</span>
         <div class="seg" role="radiogroup" aria-labelledby="vibstrength-label">
           <label><input type="radio" name="vibStrength" value="light" id="set-vib-light" autocomplete="off"><span data-i18n>Leve</span></label>
           <label><input type="radio" name="vibStrength" value="normal" id="set-vib-normal" autocomplete="off"><span data-i18n>Normal</span></label>
@@ -225,7 +221,44 @@
         </div>
         <button class="btn" id="btn-vib-test" data-i18n>📳 Testar vibração</button>
       </div>
-      <label class="row"><span><span data-i18n>Símbolos nos blocos</span><small data-i18n>Formas além da cor</small></span><input type="checkbox" class="switch" id="set-symbols" autocomplete="off"></label>
+      <h3 class="set-sec" data-i18n>✨ Visual</h3>
+      <div class="row col">
+        <span id="preset-label"><span data-i18n>Efeitos</span><small data-i18n>Leves ou Mínimos deixam o jogo mais leve em celulares simples</small></span>
+        <div class="seg" role="radiogroup" aria-labelledby="preset-label">
+          <label><input type="radio" name="preset" value="full" id="set-preset-full" autocomplete="off"><span data-i18n>Completos</span></label>
+          <label><input type="radio" name="preset" value="light" id="set-preset-light" autocomplete="off"><span data-i18n>Leves</span></label>
+          <label><input type="radio" name="preset" value="min" id="set-preset-min" autocomplete="off"><span data-i18n>Mínimos</span></label>
+        </div>
+      </div>
+      <details class="more-opts" id="more-visual">
+        <summary data-i18n>Mais opções de visual</summary>
+        <div class="row col">
+          <span id="anim-label" data-i18n>Animações</span>
+          <div class="seg" role="radiogroup" aria-labelledby="anim-label">
+            <label><input type="radio" name="anim" value="full" id="set-anim-full" autocomplete="off"><span data-i18n>Completas</span></label>
+            <label><input type="radio" name="anim" value="reduced" id="set-anim-reduced" autocomplete="off"><span data-i18n>Reduzidas</span></label>
+            <label><input type="radio" name="anim" value="off" id="set-anim-off" autocomplete="off"><span data-i18n>Desligadas</span></label>
+          </div>
+        </div>
+        <div class="row col">
+          <span id="fx-label"><span data-i18n>Efeitos especiais</span><small data-i18n>Blocos e visual mudam só em conquistas: tabuleiro limpo, recorde, marcos, jogada épica, combo ×10</small></span>
+          <div class="seg" role="radiogroup" aria-labelledby="fx-label">
+            <label><input type="radio" name="fx" value="full" id="set-fx-full" autocomplete="off"><span data-i18n>Completos</span></label>
+            <label><input type="radio" name="fx" value="reduced" id="set-fx-reduced" autocomplete="off"><span data-i18n>Reduzidos</span></label>
+            <label><input type="radio" name="fx" value="off" id="set-fx-off" autocomplete="off"><span data-i18n>Desligados</span></label>
+          </div>
+        </div>
+        <label class="row"><span><span data-i18n>Partículas</span><small data-i18n>Fragmentos, faíscas e confete</small></span><input type="checkbox" class="switch" id="set-particles" autocomplete="off"></label>
+        <div class="row col">
+          <span id="quality-label" data-i18n>Qualidade gráfica</span>
+          <div class="seg" role="radiogroup" aria-labelledby="quality-label">
+            <label><input type="radio" name="quality" value="high" id="set-quality-high" autocomplete="off"><span data-i18n>Alta</span></label>
+            <label><input type="radio" name="quality" value="medium" id="set-quality-medium" autocomplete="off"><span data-i18n>Média</span></label>
+            <label><input type="radio" name="quality" value="low" id="set-quality-low" autocomplete="off"><span data-i18n>Baixa</span></label>
+          </div>
+        </div>
+      </details>
+      <h3 class="set-sec" data-i18n>🎮 Jogo</h3>
       <div class="row col">
         <span id="drag-label"><span data-i18n>Sensibilidade do arraste</span><small data-i18n>Quanto a peça anda em relação ao dedo</small></span>
         <div class="seg" role="radiogroup" aria-labelledby="drag-label">
@@ -234,39 +267,24 @@
           <label><input type="radio" name="dragSpeed" value="1.6" id="set-drag-16" autocomplete="off"><span data-i18n>Muito rápida</span></label>
         </div>
       </div>
-      <div class="row col">
-        <span id="anim-label" data-i18n>Animações</span>
-        <div class="seg" role="radiogroup" aria-labelledby="anim-label">
-          <label><input type="radio" name="anim" value="full" id="set-anim-full" autocomplete="off"><span data-i18n>Completas</span></label>
-          <label><input type="radio" name="anim" value="reduced" id="set-anim-reduced" autocomplete="off"><span data-i18n>Reduzidas</span></label>
-          <label><input type="radio" name="anim" value="off" id="set-anim-off" autocomplete="off"><span data-i18n>Desligadas</span></label>
-        </div>
-      </div>
-      <div class="row col">
-        <span id="fx-label"><span data-i18n>Efeitos especiais</span><small data-i18n>Blocos e visual mudam só em conquistas: tabuleiro limpo, recorde, marcos, jogada épica, combo ×10</small></span>
-        <div class="seg" role="radiogroup" aria-labelledby="fx-label">
-          <label><input type="radio" name="fx" value="full" id="set-fx-full" autocomplete="off"><span data-i18n>Completos</span></label>
-          <label><input type="radio" name="fx" value="reduced" id="set-fx-reduced" autocomplete="off"><span data-i18n>Reduzidos</span></label>
-          <label><input type="radio" name="fx" value="off" id="set-fx-off" autocomplete="off"><span data-i18n>Desligados</span></label>
-        </div>
-      </div>
-      <label class="row"><span><span data-i18n>Partículas</span><small data-i18n>Fragmentos, faíscas e confete</small></span><input type="checkbox" class="switch" id="set-particles" autocomplete="off"></label>
-      <div class="row col">
-        <span id="quality-label" data-i18n>Qualidade gráfica</span>
-        <div class="seg" role="radiogroup" aria-labelledby="quality-label">
-          <label><input type="radio" name="quality" value="high" id="set-quality-high" autocomplete="off"><span data-i18n>Alta</span></label>
-          <label><input type="radio" name="quality" value="medium" id="set-quality-medium" autocomplete="off"><span data-i18n>Média</span></label>
-          <label><input type="radio" name="quality" value="low" id="set-quality-low" autocomplete="off"><span data-i18n>Baixa</span></label>
-        </div>
-      </div>
+      <label class="row"><span><span data-i18n>Símbolos nos blocos</span><small data-i18n>Formas além da cor</small></span><input type="checkbox" class="switch" id="set-symbols" autocomplete="off"></label>
+      <h3 class="set-sec" data-i18n>💾 Progresso</h3>
       <div class="row col backup-row">
-        <span><span data-i18n>Seu progresso</span><small data-i18n>Vai trocar de celular? Copie o código, mande para você mesmo (WhatsApp, e-mail) e cole no aparelho novo.</small></span>
+        <span><span class="sr-only" data-i18n>Seu progresso</span><small data-i18n>Vai trocar de celular? Copie o código, mande para você mesmo (WhatsApp, e-mail) e cole no aparelho novo.</small></span>
         <div class="backup-btns">
           <button class="btn" id="btn-backup-copy" data-i18n>📋 Copiar meu progresso</button>
           <button class="btn" id="btn-backup-restore" data-i18n>📥 Restaurar progresso</button>
         </div>
       </div>
       <a class="btn feedback-link" href="opiniao.html" data-i18n>💬 Dar opinião sobre o jogo</a>
+      <h3 class="set-sec" data-i18n>🌐 Idioma</h3>
+      <div class="row col">
+        <span id="lang-label" class="sr-only" data-i18n>Idioma</span>
+        <div class="seg" role="radiogroup" aria-labelledby="lang-label">
+          <label><input type="radio" name="lang" value="en" id="set-lang-en" autocomplete="off"><span lang="en">English</span></label>
+          <label><input type="radio" name="lang" value="pt" id="set-lang-pt" autocomplete="off"><span lang="pt-BR">Português</span></label>
+        </div>
+      </div>
       <button class="btn primary" data-action="close-settings" data-i18n>Fechar</button>
       <p class="version">Kablox <span id="version"></span> · <span data-i18n>seus dados ficam só neste aparelho</span></p>
     </div>
@@ -289,6 +307,7 @@
   <script src="js/audio.js"></script>
   <script src="js/progress.js"></script>
   <script src="js/backup.js"></script>
+  <script src="js/news.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/surprise.js"></script>
   <script src="js/app.js"></script>

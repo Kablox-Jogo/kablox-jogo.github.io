@@ -246,6 +246,14 @@
   /* ---------------- ajuda ---------------- */
   function renderHelp() {
     var body = $('#body-help'); body.innerHTML = '';
+    if (window.MZNews) { // v1.23: novidades das últimas versões
+      var news = section(T('Novidades'));
+      window.MZNews.LIST.slice(0, 3).forEach(function (e) {
+        news.appendChild(h('p', 'news-ver', 'v' + e.v));
+        var ul = h('ul', 'rules'); window.MZNews.lines(e, window.MZI18n.lang).forEach(function (l) { ul.appendChild(h('li', '', l)); }); news.appendChild(ul);
+      });
+      body.appendChild(news);
+    }
     var tut = section(T('Tutorial'), T('Passos curtos, com prática no tabuleiro. Dá para pular a qualquer momento.'));
     tut.appendChild(btn(T('Ver tutorial'), 'primary', function () { G.startTutorial('help'); }));
     body.appendChild(tut);

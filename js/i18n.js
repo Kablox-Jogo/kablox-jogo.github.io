@@ -98,6 +98,13 @@
     'Mais {n} estilos para liberar jogando — sem compras.': '{n} more styles to unlock by playing — no purchases.',
     // v1.17 — Aventura, gemas, reviver, alerta
     'Gema coletada!': 'Gem collected!',
+    'Efeitos mais leves': 'Lighter effects', 'O celular estava engasgando, então deixamos os efeitos mais leves. Dá para mudar em Configurações → Visual.': 'Your phone was stuttering, so we made the effects lighter. You can change it in Settings → Visuals.',
+    'Faltam {n} para o seu recorde!': '{n} points to your record!', 'Continue assim!': 'Keep going!',
+    'Vibrar': 'Vibrate',
+    '🔊 Som': '🔊 Sound', '📳 Vibração': '📳 Vibration', '✨ Visual': '✨ Visuals', '🎮 Jogo': '🎮 Game', '💾 Progresso': '💾 Progress', '🌐 Idioma': '🌐 Language',
+    'Efeitos': 'Effects', 'Leves ou Mínimos deixam o jogo mais leve em celulares simples': 'Light or Minimal make the game lighter on simpler phones',
+    'Leves': 'Light', 'Mínimos': 'Minimal', 'Mais opções de visual': 'More visual options',
+    '✨ Versão nova!': '✨ New version!', 'Ver novidades': "See what's new", 'Agora não': 'Not now', 'O que há de novo': "What's new", 'Legal!': 'Nice!', 'Novidades': "What's new",
     '📳 Testar vibração': '📳 Test vibration', 'Pedido de vibração enviado': 'Vibration request sent',
     'Sentiu? Se não, o celular está bloqueando: confira o modo Não perturbe, a economia de bateria e a vibração nas configurações do aparelho.': 'Feel it? If not, your phone is blocking it: check Do Not Disturb, battery saver and vibration in the device settings.',
     'Este navegador não deixou vibrar': 'This browser did not allow vibration', 'Abra o jogo pelo app instalado ou pelo Chrome. No iPhone não é possível vibrar.': 'Open the game from the installed app or Chrome. iPhones cannot vibrate from web games.',

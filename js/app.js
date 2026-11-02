@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.22.1';
+  var VERSION = '1.23.0';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   var INLINE = !!window.MZ_INLINE; // versão de prévia em arquivo único (sem service worker)
@@ -27,7 +27,7 @@
   var prefersReduced = false;
   try { prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
   var settings = Object.assign(
-    { sound: true, music: true, vibrate: true, symbols: false, sfxVol: 80, musicVol: 60, blocks: 'classic', anim: prefersReduced ? 'reduced' : 'full',
+    { sound: true, music: true, vibrate: true, symbols: false, sfxVol: 80, musicVol: 40, blocks: 'classic', anim: prefersReduced ? 'reduced' : 'full',
       lang: null, quality: 'high', particles: true, surprise: true, dragSpeed: 1.3, vibStrength: 'normal' },
     store.get('gb.settings', {})
   );
@@ -36,13 +36,14 @@
   if (settings.lang !== 'en' && settings.lang !== 'pt') settings.lang = null; // null = idioma do aparelho
   if (['high', 'medium', 'low'].indexOf(settings.quality) === -1) settings.quality = 'high';
   if (['light', 'normal', 'strong'].indexOf(settings.vibStrength) === -1) settings.vibStrength = 'normal';
+  if (!settings.mv40) { if (Number(settings.musicVol) === 60) settings.musicVol = 40; settings.mv40 = true; } // v1.23: música padrão mais baixa (quem nunca mexeu passa de 60% para 40%)
   settings.particles = settings.particles !== false;
   // v1.20: efeitos especiais em 3 níveis (antes: liga/desliga "Mudanças surpresa" — desligado vira 'off')
   if (['full', 'reduced', 'off'].indexOf(settings.fx) === -1) settings.fx = settings.surprise === false ? 'off' : 'full';
   settings.surprise = settings.fx !== 'off';
   if ([1, 1.3, 1.6].indexOf(Number(settings.dragSpeed)) === -1) settings.dragSpeed = 1.3; else settings.dragSpeed = Number(settings.dragSpeed);
   I18n.setLang(settings.lang || I18n.detect());
-  ['sfxVol', 'musicVol'].forEach(function (k) { var v = Number(settings[k]); settings[k] = isFinite(v) ? Math.max(0, Math.min(100, v)) : (k === 'sfxVol' ? 80 : 60); });
+  ['sfxVol', 'musicVol'].forEach(function (k) { var v = Number(settings[k]); settings[k] = isFinite(v) ? Math.max(0, Math.min(100, v)) : (k === 'sfxVol' ? 80 : 40); });
 
   /* ---------------- estado ---------------- */
   var state = null;
@@ -172,8 +173,23 @@
   /* ---------------- desenho do tabuleiro ---------------- */
   function requestRender() { if (!rafId) rafId = requestAnimationFrame(frame); }
   var lastLive = 0;
+  // v1.23 (otimização, pedido do dono): se o celular engasga nas animações, passa sozinho para "Efeitos: Leves" (uma vez, com aviso)
+  var perf = { last: 0, samples: [], done: false };
+  function watchPerf(t) {
+    if (perf.done || settings.autoLight || presetOf() !== 'full' || document.hidden) return;
+    if (perf.last && t - perf.last < 250) perf.samples.push(t - perf.last); // só quadros seguidos de animação
+    perf.last = t;
+    if (perf.samples.length < 90) return; // ~4 s de animação engasgada
+    var a = perf.samples.slice().sort(function (x, y) { return x - y; }), med = a[Math.floor(a.length / 2)];
+    perf.samples = [];
+    if (med > 45) { // abaixo de ~22 quadros por segundo de forma constante
+      perf.done = true; settings.autoLight = true; applyPreset('light');
+      toast(T('Efeitos mais leves'), T('O celular estava engasgando, então deixamos os efeitos mais leves. Dá para mudar em Configurações → Visual.'));
+    }
+  }
   function frame(t) {
     rafId = 0;
+    if (anims.length || drag) watchPerf(t); else perf.last = 0;
     // só o movimento contínuo (sem animação nem arraste): até ~30 quadros por segundo
     if (!anims.length && !drag && live() && t - lastLive < 30) { requestRender(); return; }
     lastLive = t;
@@ -791,23 +807,24 @@
         if (res.boardClear) anims.push({ type: 'bloom', size: SIZE, start: now + charge + 250, dur: 1200 });
       }
       var breakSkin = curSkin();
-      later(function () { Sound.breakSkin(breakSkin, res.lineCount); }, charge * 0.6);
-      Sound.clear(res.lineCount, res.combo);
-      if (res.combo >= 2) Sound.combo(res.combo);
-      if ((res.baseGained || 0) >= 60) Sound.bigScore();
+      // v1.23 (menos poluição sonora): escala + UM detalhe — combo (se houver), senão a quebra do estilo, senão o "boom"
+      if (res.combo >= 2) { Sound.clear(res.lineCount, res.combo, null); Sound.combo(res.combo); }
+      else if (Sound.hasBreak(breakSkin)) { Sound.clear(res.lineCount, res.combo, null); later(function () { Sound.breakSkin(breakSkin, res.lineCount); }, charge * 0.6); }
+      else Sound.clear(res.lineCount, res.combo, 'boom');
       if (res.boardClear) haptic('celebrate'); else if (res.combo >= 2) haptic('combo', res.combo); else haptic(res.lineCount > 1 ? 'lines' : 'line');
       if (lvl === 'full' && (res.lineCount >= 2 || res.boardClear)) later(function () { shake(res.boardClear || res.lineCount >= 3 ? 'big' : ''); }, charge);
       // cada mensagem em sua faixa, para não se sobreporem: pontos na jogada, elogio, combo, recompensas
       // faixas fixas (em linhas do tabuleiro) para as mensagens não se sobreporem
-      var mid = SIZE / 2 - 0.5, lane = res.boardClear ? { praise: 0.9, combo: 2.6, points: 6.7 } : { praise: 1.4, combo: 3.3, points: 0 };
+      var mid = SIZE / 2 - 0.5, lane = res.boardClear ? { points: 6.7 } : { points: 0 };
       var pr = lane.points || (origin[0] < 4.6 ? 5.8 : Math.min(SIZE - 1.2, origin[0]));
-      popup('+' + fmt(res.gained), [pr, Math.max(1, Math.min(SIZE - 2, origin[1]))], tier >= 3 ? 'big' : '', 0);
+      // v1.23 (menos poluição): pontos pequenos junto da peça; UMA mensagem grande por vez (combo, se houver; senão o elogio)
+      popup('+' + fmt(res.gained), res.boardClear ? [pr, mid] : [Math.max(0.6, Math.min(SIZE - 0.8, origin[0] - 0.6)), Math.max(1, Math.min(SIZE - 2, origin[1]))], 'pts-small', 0);
       var rec3 = (state.recent || []).slice(-3), streak = rec3.length === 3 && rec3.every(function (v) { return v > 0; });
-      var word = praiseFor(tier, res.boardClear, res.combo, streak);
-      if (word) popup(word, [lane.praise, mid], 'praise t' + (word === T('Imparável!') ? 4 : tier), 0);
-      if (res.combo >= 2) { // combo em destaque: número grande + pontos extras do combo; combos altos ganham cor e confete
+      var word = res.combo >= 2 || res.boardClear ? '' : praiseFor(tier, res.boardClear, res.combo, streak);
+      if (word) popup(word, [2.6, mid], 'praise t' + (word === T('Imparável!') ? 4 : tier), 0);
+      if (res.combo >= 2 && !res.boardClear) { // combo em destaque: número grande + pontos extras do combo; combos altos ganham cor e confete
         var cbCls = 'combo-big' + (res.combo >= 10 ? ' mega' : res.combo >= 5 ? ' hot' : '');
-        popup(T('Combo <b>{n}</b>', { n: Math.floor(+res.combo) || 0 }) + (res.comboBonus > 0 ? ' <small>+' + fmt(Math.floor(+res.comboBonus) || 0) + '</small>' : '')  /* v1.21.2: só números entram no HTML */, [lane.combo, mid], cbCls, 0, true, 120);
+        popup(T('Combo <b>{n}</b>', { n: Math.floor(+res.combo) || 0 }) + (res.comboBonus > 0 ? ' <small>+' + fmt(Math.floor(+res.comboBonus) || 0) + '</small>' : '')  /* v1.21.2: só números entram no HTML */, [2.6, mid], cbCls, 0, true, 60);
         if (res.combo >= 5 && partsOn() && !res.boardClear) anims.push(Fx.confetti(pal(th), geo, now + charge + 120, Math.min(70, 20 + res.combo * 4), anims));
         var rec4 = (state.recent || []).slice(-4), streak4 = rec4.length === 4 && rec4.every(function (v) { return v > 0; });
         if (lvl === 'full' && settings.quality !== 'low' && (res.combo >= 5 || streak4)) // efeito temporário: faixas de cor atravessando os blocos
@@ -815,8 +832,8 @@
             start: now + charge + 200, dur: 1400, strong: res.combo >= 7 });
       }
       if (res.boardClear) { // recompensa especial: contorno brilhando, confete e bônus
-        popup(T('Limpeza perfeita!'), [4.2, mid], 'big clear', 0, false, 200);
-        popup(T('Bônus +{n}', { n: fmt(res.clearPts) }), [5.4, mid], 'combo', 0, false, 320);
+        // v1.23: limpeza perfeita é a única mensagem grande da jogada (o bônus vai junto, pequeno)
+        popup(T('Limpeza perfeita!') + ' <small>+' + fmt(Math.floor(+res.clearPts) || 0) + '</small>', [4.2, mid], 'big clear', 0, true, 200);
         if (lvl !== 'off') anims.push({ type: 'boardGlow', color: th.accent, start: now + charge, dur: 1300 });
         if (partsOn()) anims.push(Fx.confetti(pal(th), geo, now + charge, 80, anims));
         later(function () { Sound.boardClear(); }, 250);
@@ -835,6 +852,14 @@
       if (partsOn()) anims.push(Fx.confetti(pal(th), geo, now + 200, 50, anims));
       later(function () { Sound.record(); }, 300);
       announce(T('Novo recorde!'));
+    }
+    // v1.23 (pedido do dono): "Faltam X para o seu recorde!" ao chegar a 75% e a 90% do recorde (uma vez cada)
+    if ((state.mode === 'classic' || state.mode === 'daily') && !state.recordShown && state.startBest > 0 && state.score < state.startBest) {
+      var stage = state.score >= state.startBest * 0.9 ? 2 : state.score >= state.startBest * 0.75 ? 1 : 0;
+      if (stage > (state.nearShown || 0)) {
+        state.nearShown = stage;
+        later(function () { toast('🎯 ' + T('Faltam {n} para o seu recorde!', { n: fmt(state.startBest - state.score) }), T('Continue assim!')); }, res.lineCount ? 900 : 200);
+      }
     }
     surpriseAfterMove(res, recordNow, prevCombo);
     if (prevCombo >= 2 && state.combo === 0 && state.mode !== 'tutorial') comboEnded(prevCombo);
@@ -1161,6 +1186,7 @@
 
   /* ---------------- progresso local ---------------- */
   var stats;
+  var hadStats = !!store.get('gb.stats', null); // v1.23: para o aviso de novidades saber se é instalação nova
   try { stats = Progress.normalize(store.get('gb.stats', null)); } catch (e) { stats = Progress.newStats(); }
   // v1.13: recordes feitos na escala antiga de pontos (antes da v1.11) são zerados uma vez.
   // Conquistas, estrelas, estilos e estatísticas de jogo continuam.
@@ -1316,7 +1342,7 @@
     var lv = Logic.levelFor(state.lines || 0), chip = $('#lvl-chip');
     chip.hidden = state.mode === 'tutorial' && tutStep < 3;
     $('#lvl-n').setAttribute('data-label', T('Nível {n}', { n: '' }).trim());
-    $('#lvl-n').textContent = lv; $('#lvl-m').textContent = '×' + multText(lv);
+    $('#lvl-n').textContent = lv; $('#lvl-m').textContent = '×' + multText(lv); $('#lvl-m').hidden = lv <= 1; // v1.23: ×1 não diz nada
     chip.setAttribute('title', T('Multiplicador ×{m}', { m: multText(lv) }));
   }
   function updateHud() {
@@ -1335,6 +1361,8 @@
     $('#best-label').textContent = label;
     $('#best').textContent = val;
     $('#best-mini').classList.toggle('text', m === 'zen' || m === 'challenge' || m === 'tutorial');
+    var bestNow = (m === 'classic' || m === 'daily') ? bestFor(m) : 0; // v1.23: recorde discreto; acende quando você chega perto
+    $('#best-mini').classList.toggle('near', bestNow > 0 && state.score >= bestNow * 0.8);
 
     var u = $('#btn-undo'), canUndo = m !== 'tutorial' && m !== 'daily';
     u.hidden = !canUndo;
@@ -1813,6 +1841,7 @@
 
   function refreshHome() {
     $('#home-best').textContent = fmt(bestFor('classic'));
+    $('.home-best').hidden = bestFor('classic') <= 0; // v1.23: sem "Recorde 0" para quem ainda não tem recorde
     var ng = $('#home-next') ? Progress.nextGoal(stats) : null; // v1.14: tela inicial simplificada (sem barra de próximo objetivo)
     if ($('#home-next')) $('#home-next').hidden = !ng;
     if (ng) {
@@ -1863,6 +1892,21 @@
 
   /* ---------------- configurações ---------------- */
   function saveSettings() { store.set('gb.settings', settings); }
+  /* v1.23: uma escolha só para os efeitos (as 4 opções antigas continuam em "Mais opções de visual") */
+  var PRESETS = {
+    full: { anim: 'full', fx: 'full', particles: true, quality: 'high' },
+    light: { anim: 'reduced', fx: 'reduced', particles: false, quality: 'medium' },
+    min: { anim: 'off', fx: 'reduced', particles: false, quality: 'low' }
+  };
+  function presetOf() {
+    for (var k in PRESETS) { var p = PRESETS[k]; if (settings.anim === p.anim && settings.fx === p.fx && !!settings.particles === p.particles && settings.quality === p.quality) return k; }
+    return '';
+  }
+  function applyPreset(k) {
+    var p = PRESETS[k]; if (!p) return;
+    settings.anim = p.anim; settings.fx = p.fx; settings.surprise = p.fx !== 'off'; settings.particles = p.particles; settings.quality = p.quality;
+    saveSettings(); sprites = {}; applySettings(); layout(); drawTray(false); paintBg(); requestRender();
+  }
 
   function applySettings() {
     document.body.classList.remove('anim-full', 'anim-reduced', 'anim-off');
@@ -1880,6 +1924,11 @@
     $('#set-particles').checked = !!settings.particles;
     var fxr = document.querySelector('input[name="fx"][value="' + settings.fx + '"]'); if (fxr) fxr.checked = true;
     $('#row-vibstrength').hidden = !navigator.vibrate || !settings.vibrate;
+    $('#sec-vibrate').hidden = !navigator.vibrate;
+    // v1.23 (menos poluição): volume só aparece com o som ligado; escolha única de efeitos reflete as opções avançadas
+    $('#set-sfx-vol').closest('.vol').hidden = !settings.sound;
+    $('#set-music-vol').closest('.vol').hidden = !settings.music;
+    var pz = presetOf(); Array.prototype.forEach.call(document.querySelectorAll('input[name="preset"]'), function (r) { r.checked = r.value === pz; });
     ['lang', 'quality', 'dragSpeed', 'vibStrength'].forEach(function (k) {
       var v = k === 'lang' ? I18n.lang : settings[k], el = document.querySelector('input[name="' + k + '"][value="' + v + '"]');
       if (el) el.checked = true;
@@ -1910,13 +1959,16 @@
     if (okv) toast(T('Pedido de vibração enviado'), T('Sentiu? Se não, o celular está bloqueando: confira o modo Não perturbe, a economia de bateria e a vibração nas configurações do aparelho.'));
     else toast(T('Este navegador não deixou vibrar'), T('Abra o jogo pelo app instalado ou pelo Chrome. No iPhone não é possível vibrar.'));
   });
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="preset"]'), function (r) {
+    r.addEventListener('change', function () { applyPreset(r.value); });
+  });
   Array.prototype.forEach.call(document.querySelectorAll('input[name="vibStrength"]'), function (r) {
     r.addEventListener('change', function () { settings.vibStrength = r.value; saveSettings(); haptic('lines'); });
   });
   $('#set-symbols').addEventListener('change', function (e) { settings.symbols = e.target.checked; saveSettings(); setSkin(settings.blocks); });
-  $('#set-particles').addEventListener('change', function (e) { settings.particles = e.target.checked; saveSettings(); });
+  $('#set-particles').addEventListener('change', function (e) { settings.particles = e.target.checked; saveSettings(); applySettings(); });
   Array.prototype.forEach.call(document.querySelectorAll('input[name="fx"]'), function (r) {
-    r.addEventListener('change', function () { settings.fx = r.value; settings.surprise = r.value !== 'off'; saveSettings(); sprites = {}; drawTray(false); paintBg(); requestRender(); });
+    r.addEventListener('change', function () { settings.fx = r.value; settings.surprise = r.value !== 'off'; saveSettings(); sprites = {}; applySettings(); drawTray(false); paintBg(); requestRender(); });
   });
   Array.prototype.forEach.call(document.querySelectorAll('input[name="lang"]'), function (r) {
     r.addEventListener('change', function () { settings.lang = r.value; saveSettings(); I18n.setLang(r.value); });
@@ -2146,6 +2198,27 @@
 
   /* ---------------- início ---------------- */
   $('#version').textContent = 'v' + VERSION;
+  /* v1.23: novidades depois de atualizar (js/news.js) — aviso pequeno, a pessoa escolhe ver ou não */
+  function newsDialog(entries) {
+    var list = [];
+    entries.forEach(function (e) { list.push('— v' + e.v + ' —'); window.MZNews.lines(e, I18n.lang).forEach(function (l) { list.push(l); }); });
+    showDialog({ title: T('O que há de novo'), list: list, buttons: [{ label: T('Legal!'), cls: 'primary', fn: closeDialog }] });
+  }
+  (function checkNews() {
+    var N = window.MZNews; if (!N) return;
+    var seen = store.get('gb.newsSeen', null);
+    if (!seen) seen = hadStats ? '1.22.1' : VERSION; // quem já jogava antes do aviso existir vê só o que é novo; quem acabou de instalar, nada
+    var fresh = N.since(seen, VERSION);
+    store.set('gb.newsSeen', VERSION);
+    if (!fresh.length) return;
+    setTimeout(function () {
+      var bar = $('#news-bar'); if (!bar || !screens.home.classList.contains('active')) return;
+      bar.hidden = false;
+      $('#btn-news-show').onclick = function () { bar.hidden = true; Sound.tap(); newsDialog(fresh); };
+      $('#btn-news-later').onclick = function () { bar.hidden = true; };
+      setTimeout(function () { bar.hidden = true; }, 15000); // some sozinho; a lista fica em Ajuda → Novidades
+    }, 1200);
+  })();
   try { if (localStorage.getItem('gb.restored')) { localStorage.removeItem('gb.restored'); setTimeout(function () { toast(T('Progresso restaurado!'), T('Seus recordes e conquistas estão de volta.')); }, 600); } } catch (e) {}
   applySettings();
   Sound.setTheme(THEMES[0]);
@@ -2173,6 +2246,7 @@
     get layout() { return L; },
     get anims() { return anims.length; },
     get stats() { return stats; },
+    get perf() { return perf; },
     place: function (slot, r, c) { return commitPlace(slot, r, c); },
     get settings() { return settings; },
     /** Onde o dedo precisa ir (considerando a sensibilidade) para a peça cair em (row, col). Só para testes. */
