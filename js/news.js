@@ -4,6 +4,17 @@
 (function (root) {
   'use strict';
   var LIST = [
+    { v: '1.24.0', date: '2026-11-04',
+      pt: ['🏆 Temporada 1: recordes começam do zero (o antigo fica como Recorde lendário)', '🪵⚙️🥉🥈🥇💎 Medalhas de recorde: 5 mil, 20 mil, 50 mil, 200 mil, 500 mil e 1 milhão', '✨ Blocos raros: Vidro doce (10 mil), Brasa (25 mil) e Pérola (50 mil)', '🎁 Baú do dia na primeira partida', '🎃 Semana do Terror até domingo 8/11: abóboras, morcegos e um desafio que dá a Abóbora para sempre', 'Escolha o modo (Clássico, Zen, Semana) embaixo do JOGAR; o jogo lembra o último', 'Tabuleiro sempre bem visível em todos os visuais', 'Tela de Modos nova, com recorde e progresso de cada modo', 'Primeira partida mais tranquila, com a meta da primeira medalha', 'Som de encaixar mais firme, combo que sobe de tom e música que muda a cada minuto', 'Arrastar mais preciso: a peça não escorrega na hora de soltar', 'Tela inicial cabe inteira, sem rolar',
+        '⭐ Nível do jogador com XP (XP em dobro no fim de semana) e títulos', '🔥 Sequência de dias com escudo semanal e prêmio no 7º dia',
+        '🏁 Desafio da Semana: mesmas peças para todos, código de prova e Placar da galera conferido', '1 milhão ficou bem mais difícil: o multiplicador para de disparar no nível 9',
+        'Efeitos novos: câmera lenta na jogada épica, fogo no combo ×10, reflexo de vidro, carinhas na Gelatina, Pelúcia, Doce, Bolha e Queijo',
+        'Fim de partida e imagem do resultado com medalha e nível'],
+      en: ['🏆 Season 1: records start from zero (your old one becomes a Legendary record)', '🪵⚙️🥉🥈🥇💎 Record medals: 5K, 20K, 50K, 200K, 500K and 1M', '✨ Rare blocks: Candy glass (10K), Ember (25K) and Pearl (50K)', '🎁 Daily chest on your first game', '🎃 Spooky Week until Sunday Nov 8: pumpkins, bats and a challenge that gives you the Pumpkin forever', 'Pick the mode (Classic, Zen, Week) below PLAY; the game remembers the last one', 'Board always clearly visible in every look', 'New Modes screen with each mode’s record and progress', 'Calmer first game with a first-medal goal', 'Firmer place sound, combos that rise in pitch and music that changes every minute', 'More precise dragging: pieces no longer slip when you let go', 'Home screen fits without scrolling',
+        '⭐ Player level with XP (double XP on weekends) and titles', '🔥 Daily streak with a weekly shield and a day-7 reward',
+        '🏁 Weekly Challenge: same pieces for everyone, proof code and a verified crew leaderboard', '1 million is much harder now: the multiplier stops exploding at level 9',
+        'New effects: slow motion on epic plays, fire at combo ×10, glass glints, faces on Jelly, Plush, Candy, Bubble and Cheese',
+        'Game-over screen and result image with medal and level'] },
     { v: '1.23.0', date: '2026-11-01',
       pt: ['Configurações mais simples, em grupos (Som, Vibração, Visual, Jogo)', 'Uma escolha só para os efeitos: Completos, Leves ou Mínimos',
         'Menos texto em cima do tabuleiro: uma mensagem por vez', 'Topo da partida mais limpo; o recorde acende quando você chega perto',

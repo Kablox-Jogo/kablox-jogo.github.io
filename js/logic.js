@@ -21,6 +21,9 @@
       boardClear: 3000,     // bônus por deixar o tabuleiro vazio (≈ 30 linhas simples, como na escala antiga)
       levelEvery: 10,       // linhas para subir de nível
       levelMult: 1.45,      // quanto o multiplicador cresce a cada nível
+      // v1.24 (amigos do dono chegavam a 1 milhão "em bordoada"): o multiplicador cresce rápido só até o nível
+      // `capLevel` (×19,6); depois sobe devagar, +`afterCap` por nível (Nv 10 ×21,6 · Nv 15 ×31,6 · Nv 20 ×41,6).
+      capLevel: 9, afterCap: 2,
       // escala antiga (interna): usada só para medir o progresso no equilíbrio (dificuldade, peças novas)
       legacy: { perBlock: 1, perLineSquared: 8, comboPerLevel: 16, boardClear: 300 }
     },
@@ -46,7 +49,10 @@
         recoveryChance: 0.5, extraSets: 10, highScoreFade: 0.85, tripleShare: 1, // v1.22: ajuda some mais para quem tem muitos pontos (0,7→0,85)
         // v1.19 (pedido do dono): peça de salvação disfarçada — com o tabuleiro apertado, às vezes 1 das 3 peças é
         // sorteada entre as que completam uma linha agora (não sempre a melhor; as outras 2 vêm normais).
-        rescueFrom: 0.35, rescueChance: 0.45 } // v1.22: peça salvadora menos frequente (0,6→0,45; ainda × (1 − dificuldade))
+        rescueFrom: 0.35, rescueChance: 0.45 }, // v1.22: peça salvadora menos frequente (0,6→0,45; ainda × (1 − dificuldade))
+      // v1.24: fase "lendária" — de `from` pontos em diante a ajuda vai sumindo e as peças grandes/estranhas aparecem mais,
+      // até o máximo em `from + span`. Só no Clássico (os desafios usam filas fixas).
+      late: { from: 300000, span: 300000, bigBoost: 1.5, awkwardBoost: 1.0 }
     },
     // v1.21 — blocos especiais (pedido do dono): a partir do nível 3, às vezes 1 bloco de uma peça nova vem especial.
     // Estrela: ao ser limpa dá pontos extras. Bomba: ao ser limpa explode os vizinhos 3×3 (blocos contam pontos).
@@ -227,15 +233,20 @@
       0.3 * clamp01((A.mobilityLow - mob) / A.mobilityLow) +
       0.15 * clamp01(((ctx.movesSinceClear || 0) - 2) / A.drought);
     var assist = clamp01(tight) * (1 - A.highScoreFade * byScore); // quem já vai longe recebe menos ajuda
-    return { difficulty: difficulty, assist: assist, fill: fill, mobility: mob };
+    var late = lateFor(score);
+    assist *= 1 - late;
+    if (ctx.easy && (ctx.score || 0) < 600) { difficulty *= 0.25; assist = Math.max(assist, 0.35); } // v1.24: primeira partida mais tranquila (até ~5 mil pontos)
+    return { difficulty: difficulty, assist: assist, fill: fill, mobility: mob, late: late };
   }
+  function lateFor(score) { var T = CONFIG.generator.late; return T ? clamp01(((score || 0) - T.from) / T.span) : 0; }
   function pickShape(rng, score, dir) {
     var D = CONFIG.generator.difficulty, A = CONFIG.generator.assist, d = dir.difficulty, a = dir.assist;
+    var T = CONFIG.generator.late, lt = dir.late || 0;
     var total = 0, weights = SHAPES.map(function (s) {
       var w = (score || 0) >= s.minScore ? s.weight : 0, n = s.cells.length;
       if (!w) return 0;
-      if (n >= 5) w *= (1 + D.bigBoost * d) * (1 - (1 - A.bigCut) * a);
-      if (AWKWARD[s.cat]) w *= 1 + D.awkwardBoost * d;
+      if (n >= 5) w *= (1 + D.bigBoost * d) * (1 - (1 - A.bigCut) * a) * (1 + T.bigBoost * lt);
+      if (AWKWARD[s.cat]) w *= (1 + D.awkwardBoost * d) * (1 + T.awkwardBoost * lt);
       if (n <= 2) w *= (1 - D.smallCut * d) * (1 + (A.smallBoost - 1) * a);
       else if (n === 3) w *= 1 + A.tripleShare * (A.smallBoost - 1) * a;
       total += w;
@@ -370,12 +381,16 @@
 
   /** Nível e multiplicador de pontos. */
   function levelFor(lines) { return 1 + Math.floor((lines || 0) / CONFIG.score.levelEvery); }
-  function multFor(level) { return Math.pow(CONFIG.score.levelMult, Math.max(0, level - 1)); }
+  function multFor(level) {
+    var S = CONFIG.score, lv = Math.max(1, level || 1);
+    if (!S.capLevel || lv <= S.capLevel) return Math.pow(S.levelMult, lv - 1);
+    return Math.pow(S.levelMult, S.capLevel - 1) + S.afterCap * (lv - S.capLevel);
+  }
 
   function ctxOf(state) {
     // o equilíbrio usa a escala antiga (state.base); partidas salvas antigas não têm base → usam a pontuação
     return { score: typeof state.base === 'number' && isFinite(state.base) ? state.base : state.score, movesSinceClear: state.movesSinceClear, level: levelFor(state.lines || 0),
-      recent: Array.isArray(state.recent) ? state.recent.filter(function (v) { return typeof v === 'number' && isFinite(v); }) : [] };
+      recent: Array.isArray(state.recent) ? state.recent.filter(function (v) { return typeof v === 'number' && isFinite(v); }) : [], easy: !!state.easy };
   }
 
   /** v1.17 — Reviver (Clássico, 1× por partida, grátis): troca as peças da bandeja por 3 que cabem no tabuleiro atual.

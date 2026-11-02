@@ -2,9 +2,36 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.23.0';
-  var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise;
+  var VERSION = '1.24.0';
+  var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise, Season = window.MZSeason, Weekly = window.MZWeekly, Events = window.MZEvents;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
+  /* v1.24 (reclamação dos jogadores: "tabuleiro quase transparente, machuca a vista"): contraste mínimo garantido em
+     todos os visuais e estilos — tabuleiro × fundo da tela, contorno × casa vazia e bloco × casa vazia. */
+  var Vis = (function () {
+    function hx(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+    function toHex(a) { return '#' + a.map(function (v) { return ('0' + Math.max(0, Math.min(255, Math.round(v))).toString(16)).slice(-2); }).join(''); }
+    function lum(h) { return hx(h).map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }).reduce(function (a, v, i) { return a + v * [0.2126, 0.7152, 0.0722][i]; }, 0); }
+    function cr(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+    function mix(a, b, k) { var x = hx(a), y = hx(b); return toHex(x.map(function (v, i) { return v + (y[i] - v) * k; })); }
+    /** Afasta `c` de `ref` (para o preto ou o branco, o que estiver mais longe) até ter contraste `min`. */
+    function push(c, ref, min) {
+      if (!c || c[0] !== '#' || c.length !== 7 || cr(c, ref) >= min) return c;
+      var to = lum(c) <= lum(ref) ? '#000000' : '#ffffff', out = c;
+      for (var k = 0.06; k <= 1 && cr(out, ref) < min; k += 0.06) out = mix(c, to, k);
+      if (cr(out, ref) < min && to === '#ffffff') { to = '#000000'; for (k = 0.06; k <= 1 && cr(out, ref) < min; k += 0.06) out = mix(c, to, k); }
+      return out;
+    }
+    function fix(th, bgA, bgB) {
+      var bgm = mix(bgA, bgB, 0.5);
+      th.board = push(th.board, bgm, 1.7);
+      if (th.grid) th.grid = push(th.grid, bgm, 1.5);
+      th.emptyEdge = push(th.emptyEdge, th.empty, 1.75);
+      if (th.palette) th.palette = th.palette.map(function (c) { return push(c, th.empty, 2.2); });
+      return th;
+    }
+    return { fix: fix, cr: cr, mix: mix };
+  })();
+  THEMES.forEach(function (th) { if (th.bg && th.board && th.board[0] === '#') Vis.fix(th, th.bg[0], th.bg[1]); });
   var INLINE = !!window.MZ_INLINE; // versão de prévia em arquivo único (sem service worker)
   var I18n = window.MZI18n, T = I18n.t;
 
@@ -36,6 +63,7 @@
   if (settings.lang !== 'en' && settings.lang !== 'pt') settings.lang = null; // null = idioma do aparelho
   if (['high', 'medium', 'low'].indexOf(settings.quality) === -1) settings.quality = 'high';
   if (['light', 'normal', 'strong'].indexOf(settings.vibStrength) === -1) settings.vibStrength = 'normal';
+  settings.nick = typeof settings.nick === 'string' ? settings.nick.replace(/[\u0000-\u001f<>&"'`\\]/g, '').slice(0, 16) : ''; // v1.24: apelido do placar da galera
   if (!settings.mv40) { if (Number(settings.musicVol) === 60) settings.musicVol = 40; settings.mv40 = true; } // v1.23: música padrão mais baixa (quem nunca mexeu passa de 60% para 40%)
   settings.particles = settings.particles !== false;
   // v1.20: efeitos especiais em 3 níveis (antes: liga/desliga "Mudanças surpresa" — desligado vira 'off')
@@ -172,6 +200,26 @@
 
   /* ---------------- desenho do tabuleiro ---------------- */
   function requestRender() { if (!rafId) rafId = requestAnimationFrame(frame); }
+  setInterval(function () { // v1.24: um reflexo a cada ~8 s durante a partida (só em Efeitos Completos)
+    if (document.hidden || !state || !screenIs('game') || settings.anim !== 'full' || settings.quality === 'low' || drag || locked) return;
+    if (!state.board.some(function (v) { return v >= 0; })) return;
+    anims.push({ type: 'glint', start: animNow(), dur: 1100 }); requestRender();
+  }, 8000);
+  /* v1.24: câmera lenta — relógio das animações que pode andar mais devagar por um instante (jogada épica) */
+  var clock = { off: 0, last: 0, from: 0, until: 0, k: 1 };
+  function animNow(real) {
+    real = real || performance.now();
+    if (clock.last && clock.until > clock.last) {
+      var a = Math.max(clock.last, clock.from), b = Math.min(real, clock.until);
+      if (b > a) clock.off += (b - a) * (1 - clock.k);
+    }
+    clock.last = real;
+    return real - clock.off;
+  }
+  function slowMo(ms, k, delay) { var t0 = performance.now(); animNow(t0); clock.from = t0 + (delay || 0); clock.until = clock.from + ms; clock.k = k; }
+  function onFire() { return !!state && state.combo >= 10 && settings.anim === 'full' && settings.quality !== 'low' && state.mode !== 'tutorial' && !document.hidden && screenIs('game'); }
+  var FACES = { jelly: 1, fur: 1, candy: 1, bubble: 1, cheese: 1 }; // v1.24: estilos com "carinha"
+  function facesOn() { return !!state && !!FACES[curSkin()] && settings.anim === 'full' && settings.quality !== 'low' && !document.hidden && screenIs('game'); }
   var lastLive = 0;
   // v1.23 (otimização, pedido do dono): se o celular engasga nas animações, passa sozinho para "Efeitos: Leves" (uma vez, com aviso)
   var perf = { last: 0, samples: [], done: false };
@@ -190,12 +238,13 @@
   function frame(t) {
     rafId = 0;
     if (anims.length || drag) watchPerf(t); else perf.last = 0;
+    var real = t; t = animNow(real);
     // só o movimento contínuo (sem animação nem arraste): até ~30 quadros por segundo
-    if (!anims.length && !drag && live() && t - lastLive < 30) { requestRender(); return; }
-    lastLive = t;
+    if (!anims.length && !drag && (live() || onFire() || facesOn()) && real - lastLive < 30) { requestRender(); return; }
+    lastLive = real;
     anims = anims.filter(function (a) { return t - a.start < a.dur; });
     render(t);
-    if (anims.length || glowing() || live() || (tutTarget && settings.anim !== 'off')) requestRender();
+    if (anims.length || glowing() || live() || onFire() || facesOn() || (tutTarget && settings.anim !== 'off')) requestRender();
   }
 
   // estilos com movimento contínuo (pelos, gelatina): só com animações completas e o jogo visível
@@ -219,7 +268,7 @@
 
   function render(now) {
     if (!state || !L.size) return;
-    now = now || performance.now();
+    now = now || animNow();
     var ctx = bctx, cell = L.cell, pad = L.pad, px = Math.max(1, Math.round(cell * L.dpr));
     var th = boardTheme(), sw = activeSweep(now);
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
@@ -257,6 +306,12 @@
       if (state.board[i] >= 0) ctx.drawImage(gemSprite(px), pad + (i % SIZE) * cell, pad + Math.floor(i / SIZE) * cell, cell, cell);
     });
 
+    if (state.rare) for (var rk in state.rare) { // v1.24: blocos raros no tabuleiro (só visual)
+      var ri = +rk; if (state.board[ri] < 0) continue;
+      var rx = pad + (ri % SIZE) * cell, ry = pad + Math.floor(ri / SIZE) * cell;
+      ctx.save(); if (settings.anim === 'full' && state.rare[rk] !== 'pk') ctx.globalAlpha = 0.82 + 0.18 * Math.sin(now / 300 + ri);
+      ctx.drawImage(rareSprite(state.rare[rk], px), rx, ry, cell, cell); ctx.restore();
+    }
     if (state.spec) for (var sk in state.spec) { // v1.21: blocos especiais no tabuleiro
       var si = +sk; if (state.board[si] >= 0) drawSpecialOn(ctx, state.spec[sk], pad + (si % SIZE) * cell, pad + Math.floor(si / SIZE) * cell, cell, px, now);
     }
@@ -279,6 +334,21 @@
         prev.preview.rows.forEach(function (r) { Themes.roundRect(ctx, pad + 1, pad + r * cell + 1, SIZE * cell - 2, cell - 2, cell * 0.18); ctx.stroke(); });
         prev.preview.cols.forEach(function (c) { Themes.roundRect(ctx, pad + c * cell + 1, pad + 1, cell - 2, SIZE * cell - 2, cell * 0.18); ctx.stroke(); });
         ctx.restore();
+        if (settings.anim === 'full') { // v1.24: faixa de luz correndo pelas linhas que vão sumir
+          var sp2 = (now % 900) / 900, bandW = cell * 1.6;
+          ctx.save(); ctx.globalCompositeOperation = 'lighter';
+          prev.preview.rows.forEach(function (r) {
+            var bx2 = pad - bandW + sp2 * (SIZE * cell + bandW), gr2 = ctx.createLinearGradient(bx2, 0, bx2 + bandW, 0);
+            gr2.addColorStop(0, 'rgba(255,255,255,0)'); gr2.addColorStop(0.5, 'rgba(255,255,255,.38)'); gr2.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = gr2; ctx.fillRect(Math.max(pad, bx2), pad + r * cell, bandW, cell);
+          });
+          prev.preview.cols.forEach(function (c) {
+            var by2 = pad - bandW + sp2 * (SIZE * cell + bandW), gr3 = ctx.createLinearGradient(0, by2, 0, by2 + bandW);
+            gr3.addColorStop(0, 'rgba(255,255,255,0)'); gr3.addColorStop(0.5, 'rgba(255,255,255,.38)'); gr3.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = gr3; ctx.fillRect(pad + c * cell, Math.max(pad, by2), cell, bandW);
+          });
+          ctx.restore();
+        }
       }
       // contorno da área de encaixe
       ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 2;
@@ -306,7 +376,51 @@
       ctx.restore();
     }
 
+    if (facesOn()) drawFaces(ctx, now);
+    if (onFire()) drawFire(ctx, now);
     for (var i = 0; i < anims.length; i++) drawAnim(ctx, anims[i], now, px);
+  }
+
+  /* v1.24: carinhas nos blocos (Gelatina, Pelúcia, Doce, Bolha, Queijo) — piscam e olham para a peça que você arrasta */
+  function drawFaces(ctx, now) {
+    var cell = L.cell, pad = L.pad, look = null;
+    if (drag && drag.row > -50) look = { x: pad + (drag.col + drag.shape.w / 2) * cell, y: pad + (drag.row + drag.shape.h / 2) * cell };
+    ctx.save();
+    for (var i = 0; i < state.board.length; i++) {
+      if (state.board[i] < 0 || (state.spec && state.spec[i])) continue;
+      var r = Math.floor(i / SIZE), c = i % SIZE, cx = pad + (c + 0.5) * cell, cy = pad + (r + 0.52) * cell;
+      var seed = (r * 37 + c * 17) % 97, blink = ((now / 1000 + seed * 0.37) % 4.2) < 0.13;
+      var ex = cell * 0.17, ey = -cell * 0.06, er = cell * 0.085, dx = 0, dy = 0;
+      if (look) { var vx = look.x - cx, vy = look.y - cy, d = Math.sqrt(vx * vx + vy * vy) || 1; dx = vx / d * er * 0.45; dy = vy / d * er * 0.45; }
+      [-1, 1].forEach(function (sgn) {
+        var x = cx + sgn * ex, y = cy + ey;
+        if (blink) { ctx.strokeStyle = 'rgba(30,20,40,.75)'; ctx.lineWidth = Math.max(1, cell * 0.035); ctx.beginPath(); ctx.moveTo(x - er, y); ctx.lineTo(x + er, y); ctx.stroke(); return; }
+        ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.beginPath(); ctx.ellipse(x, y, er, er * 1.15, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = '#231a33'; ctx.beginPath(); ctx.arc(x + dx, y + dy, er * 0.55, 0, 7); ctx.fill();
+      });
+      ctx.strokeStyle = 'rgba(30,20,40,.6)'; ctx.lineWidth = Math.max(1, cell * 0.03);
+      ctx.beginPath(); ctx.arc(cx, cy + cell * 0.08, cell * 0.08, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  /* v1.24: fogo subindo da borda de baixo do tabuleiro (e brilho quente nas laterais) com combo ×10 ou mais */
+  function drawFire(ctx, now) {
+    var S = L.size, n = 9, cell = L.cell;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    var side = ctx.createLinearGradient(0, 0, cell * 0.6, 0); side.addColorStop(0, 'rgba(255,120,30,.42)'); side.addColorStop(1, 'rgba(255,120,30,0)');
+    ctx.fillStyle = side; ctx.fillRect(0, 0, cell * 0.6, S);
+    ctx.save(); ctx.translate(S, 0); ctx.scale(-1, 1); ctx.fillRect(0, 0, cell * 0.6, S); ctx.restore();
+    for (var k = 0; k < n; k++) {
+      for (var layer = 0; layer < 2; layer++) {
+        var ph = now / (layer ? 230 : 310) + k * 2.1 + layer * 1.3, rise = (ph % 1 + 1) % 1;
+        var x = (k + 0.5) / n * S + Math.sin(ph * 2.3) * cell * 0.15, h = cell * (1.3 + 0.6 * Math.sin(now / 170 + k)), y = S - rise * h;
+        var r = cell * (0.75 - 0.45 * rise) * (layer ? 0.7 : 1);
+        var g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, layer ? 'rgba(255,235,140,.8)' : 'rgba(255,150,40,.7)'); g.addColorStop(1, 'rgba(255,90,20,0)');
+        ctx.globalAlpha = 1 - rise * 0.8; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   /** Gema (arte original do Kablox): losango facetado ciano com brilho — desenhada por cima do bloco. */
@@ -355,6 +469,55 @@
     }
     return (specCache[key] = c);
   }
+  /* v1.24: arte dos blocos raros (original): Vidro doce (listras de bala), Brasa (rachaduras acesas), Pérola (brilho furta-cor) */
+  var rareCache = {};
+  function rareSprite(t, px) {
+    var key = t + px; if (rareCache[key]) return rareCache[key];
+    var c = document.createElement('canvas'); c.width = c.height = px; var g = c.getContext('2d'), m = px / 2, r = px * 0.42;
+    g.save(); Themes.roundRect(g, px * 0.08, px * 0.08, px * 0.84, px * 0.84, px * 0.18); g.clip();
+    if (t === 'r1') { // Vidro doce
+      g.globalAlpha = 0.5; g.fillStyle = '#ffffff';
+      for (var i = -3; i < 6; i++) { g.save(); g.translate(m, m); g.rotate(-Math.PI / 4); g.fillRect(-px + i * px * 0.28, -px, px * 0.11, px * 2); g.restore(); }
+      g.globalAlpha = 1; var gl = g.createLinearGradient(0, 0, px, px); gl.addColorStop(0, 'rgba(255,255,255,.55)'); gl.addColorStop(0.5, 'rgba(255,255,255,0)'); g.fillStyle = gl; g.fillRect(0, 0, px, px);
+    } else if (t === 'r2') { // Brasa
+      g.fillStyle = 'rgba(30,8,0,.45)'; g.fillRect(0, 0, px, px);
+      g.strokeStyle = '#ffb03a'; g.shadowColor = '#ff6a00'; g.shadowBlur = px * 0.15; g.lineWidth = Math.max(1, px * 0.05); g.lineCap = 'round';
+      [[0.2, 0.25, 0.45, 0.5, 0.35, 0.8], [0.5, 0.5, 0.75, 0.35, 0.85, 0.15], [0.45, 0.5, 0.65, 0.78]].forEach(function (pts) {
+        g.beginPath(); g.moveTo(pts[0] * px, pts[1] * px); for (var k = 2; k < pts.length; k += 2) g.lineTo(pts[k] * px, pts[k + 1] * px); g.stroke(); });
+    } else if (t === 'pk') { // Abóbora (Semana do Terror): gomos laranja + rosto aceso
+      g.restore(); g.save(); Themes.roundRect(g, px * 0.06, px * 0.06, px * 0.88, px * 0.88, px * 0.2); g.clip();
+      var go = g.createRadialGradient(m, m * 0.9, px * 0.05, m, m, px * 0.6); go.addColorStop(0, '#ffb340'); go.addColorStop(1, '#c4520a');
+      g.fillStyle = go; g.fillRect(0, 0, px, px);
+      g.strokeStyle = 'rgba(120,40,0,.45)'; g.lineWidth = Math.max(1, px * 0.035);
+      [0.3, 0.5, 0.7].forEach(function (f) { g.beginPath(); g.ellipse(px * f, m, px * 0.16, px * 0.42, 0, 0, 7); g.stroke(); });
+      g.fillStyle = '#ffe680'; g.shadowColor = '#ffcf3a'; g.shadowBlur = px * 0.12;
+      g.beginPath(); g.moveTo(px * 0.28, px * 0.42); g.lineTo(px * 0.4, px * 0.42); g.lineTo(px * 0.34, px * 0.3); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(px * 0.6, px * 0.42); g.lineTo(px * 0.72, px * 0.42); g.lineTo(px * 0.66, px * 0.3); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(px * 0.27, px * 0.58); g.lineTo(px * 0.38, px * 0.66); g.lineTo(px * 0.5, px * 0.58); g.lineTo(px * 0.62, px * 0.66); g.lineTo(px * 0.73, px * 0.58); g.lineTo(px * 0.62, px * 0.74); g.lineTo(px * 0.38, px * 0.74); g.closePath(); g.fill();
+      g.shadowBlur = 0; g.fillStyle = '#3d7a1e'; g.fillRect(m - px * 0.04, px * 0.04, px * 0.08, px * 0.12);
+    } else { // Pérola
+      var gp = g.createLinearGradient(0, px, px, 0); gp.addColorStop(0, 'rgba(255,150,220,.55)'); gp.addColorStop(0.35, 'rgba(255,255,255,.35)'); gp.addColorStop(0.65, 'rgba(120,230,255,.5)'); gp.addColorStop(1, 'rgba(200,170,255,.55)');
+      g.fillStyle = gp; g.fillRect(0, 0, px, px);
+      var gr = g.createRadialGradient(m - r * 0.2, m - r * 0.25, 0, m, m, r * 0.55); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.6, '#f2ecff'); gr.addColorStop(1, 'rgba(220,210,255,.0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(m, m, r * 0.5, 0, 7); g.fill();
+    }
+    g.restore();
+    g.strokeStyle = t === 'r2' || t === 'pk' ? 'rgba(255,170,60,.9)' : 'rgba(255,255,255,.85)'; g.lineWidth = Math.max(1, px * 0.04);
+    Themes.roundRect(g, px * 0.1, px * 0.1, px * 0.8, px * 0.8, px * 0.17); g.stroke();
+    return (rareCache[key] = c);
+  }
+  function rareName(t) { var r = Season.RARES.filter(function (x) { return x.id === t; })[0]; return r ? T(r.name) : ''; }
+  function rareModes() { return state && (state.mode === 'classic' || state.mode === 'zen' || state.mode === 'event'); }
+  function tagRares() { // peças novas podem vir com 1 quadradinho raro
+    if (!rareModes()) return;
+    state.pieces.forEach(function (p) {
+      if (!p || p.rq) return; p.rq = 1;
+      var ev = eventNow(), t = null;
+      if (ev && Math.random() < (state.mode === 'event' ? ev.goalChance : ev.chance)) t = ev.rare; // v1.24: abóboras da Semana do Terror
+      else t = Season.rollRare(stats, state.score, Math.random);
+      if (t) p.rk = { k: Math.floor(Math.random() * SHAPES[p.s].cells.length), t: t };
+    });
+  }
   function drawSpecialOn(ctx, kind, x, y, cell, px, now) {
     var s = cell, img = specialSprite(kind, px);
     if (now && settings.anim === 'full') s = cell * (1 + 0.06 * Math.sin(now / (kind === 'bomb' ? 120 : 260))); // leve pulsar
@@ -368,6 +531,17 @@
   }
   function drawAnim(ctx, a, now, px) {
     if (a.type === 'morph') { drawMorph(ctx, a, now, px); return; }
+    if (a.type === 'glint') { // v1.24: reflexo de vidro passando pelos blocos de vez em quando
+      var gt = (now - a.start) / a.dur; if (gt < 0 || gt >= 1) return;
+      var gc = L.cell, gp = L.pad, S2 = SIZE * gc, pos = -S2 * 0.5 + gt * S2 * 2;
+      ctx.save(); ctx.beginPath();
+      for (var gi = 0; gi < state.board.length; gi++) if (state.board[gi] >= 0) Themes.roundRect(ctx, gp + (gi % SIZE) * gc + 1, gp + Math.floor(gi / SIZE) * gc + 1, gc - 2, gc - 2, gc * 0.2);
+      ctx.clip(); ctx.globalCompositeOperation = 'lighter';
+      var gg = ctx.createLinearGradient(gp + pos, gp, gp + pos + gc * 1.4, gp + gc * 1.4);
+      gg.addColorStop(0, 'rgba(255,255,255,0)'); gg.addColorStop(0.5, 'rgba(255,255,255,.32)'); gg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gg; ctx.fillRect(gp, gp, S2, S2); ctx.restore();
+      return;
+    }
     if (a.type === 'beam') { // v1.21: feixe de luz passando pela linha limpa
       var bt = (now - a.start) / a.dur; if (bt < 0 || bt >= 1) return;
       var bc = L.cell, bp = L.pad, span = SIZE * bc, head = bt * 1.35, alpha = bt < 0.75 ? 1 : (1 - bt) / 0.25;
@@ -501,6 +675,7 @@
       var ox = (w - shape.w * c) / 2, oy = (h - shape.h * c) / 2;
       shape.cells.forEach(function (sc) { ctx.drawImage(sprite(th, p.c, px), ox + sc[1] * c, oy + sc[0] * c, c, c); });
       if (p.sp && shape.cells[p.sp.k]) drawSpecialOn(ctx, p.sp.t, ox + shape.cells[p.sp.k][1] * c, oy + shape.cells[p.sp.k][0] * c, c, px);
+      if (p.rk && shape.cells[p.rk.k]) ctx.drawImage(rareSprite(p.rk.t, px), ox + shape.cells[p.rk.k][1] * c, oy + shape.cells[p.rk.k][0] * c, c, c);
       if (deal) { slot.classList.remove('deal'); void slot.offsetWidth; slot.classList.add('deal'); }
     });
   }
@@ -520,6 +695,7 @@
     var th = boardTheme();
     shape.cells.forEach(function (sc) { dctx.drawImage(sprite(th, piece.c, px), sc[1] * cell, sc[0] * cell, cell, cell); });
     if (piece.sp && shape.cells[piece.sp.k]) drawSpecialOn(dctx, piece.sp.t, shape.cells[piece.sp.k][1] * cell, shape.cells[piece.sp.k][0] * cell, cell, px);
+    if (piece.rk && shape.cells[piece.rk.k]) dctx.drawImage(rareSprite(piece.rk.t, px), shape.cells[piece.rk.k][1] * cell, shape.cells[piece.rk.k][0] * cell, cell, cell);
   }
   function repaintHeldPiece() {
     if (!drag || drag.kb || dragCanvas.hidden) return;
@@ -602,6 +778,8 @@
     var rect = boardCanvas.getBoundingClientRect();
     var fc = (d.left - rect.left - L.pad) / L.cell, fr = (d.top - rect.top - L.pad) / L.cell;
     var col = Math.round(fc), row = Math.round(fr);
+    // v1.24 (dono: "às vezes cai no lugar errado"): histerese — só troca de casa quando o dedo passa claramente da metade
+    if (d.row > -50 && Math.abs(fc - d.col) < 0.62 && Math.abs(fr - d.row) < 0.62 && (d.valid || !Logic.canPlace(state.board, d.shape, row, col))) { col = d.col; row = d.row; }
     var over = d.left + d.w > rect.left && d.left < rect.right && d.top + d.h > rect.top && d.top < rect.bottom;
     // ímã: se o lugar exato não cabe, usa o encaixe válido mais próximo (até 0,75 casa de distância)
     if (over && !Logic.canPlace(state.board, d.shape, row, col)) {
@@ -613,11 +791,14 @@
       if (best) { row = best.r; col = best.c; }
     }
     if (row !== d.row || col !== d.col) {
+      if (d.valid) { d.prevRow = d.row; d.prevCol = d.col; } // lembra o último lugar válido mostrado
+      d.changedAt = performance.now(); d.changeMag = d.lastF ? Math.hypot(fc - d.lastF[0], fr - d.lastF[1]) : 9; // tamanho do movimento que trocou a casa
       d.row = row; d.col = col;
       d.valid = Logic.canPlace(state.board, d.shape, row, col);
       d.preview = d.valid ? Logic.previewLines(state.board, d.shape, row, col) : null;
       requestRender();
     }
+    d.lastF = [fc, fr];
     if (d.over !== over) requestRender();
     d.over = over;
     dragCanvas.classList.toggle('invalid', over && !d.valid);
@@ -642,6 +823,10 @@
       if (drop) { Sound.invalid(); slot.classList.remove('shake'); void slot.offsetWidth; slot.classList.add('shake'); drag = d; slot.classList.add('kb-selected'); return; }
       requestRender();
       return;
+    }
+    // v1.24: se a casa mudou nos últimos 90 ms (o dedo "escorrega" ao soltar), usa o lugar válido que estava aparecendo antes
+    if (drop && d.changedAt && performance.now() - d.changedAt < 90 && d.changeMag < 0.3 && d.prevRow != null && Logic.canPlace(state.board, d.shape, d.prevRow, d.prevCol)) {
+      d.row = d.prevRow; d.col = d.prevCol; d.valid = true;
     }
     if (drop && d.valid && commitPlace(d.slot, d.row, d.col)) {
       dragCanvas.hidden = true;
@@ -737,17 +922,41 @@
     var snap = state.mode === 'tutorial' ? null : JSON.stringify(state);
     var statsSnap = snap ? JSON.stringify(stats) : null;
     var prevCombo = state.combo || 0;
+    var placedPiece = state.pieces[slot];
     var res = Logic.place(state, slot, r, c, rngFor(state));
     if (!res) return false;
+    if (placedPiece && placedPiece.rk && SHAPES[placedPiece.s].cells[placedPiece.rk.k]) { // v1.24: bloco raro vai para o tabuleiro
+      var rc = SHAPES[placedPiece.s].cells[placedPiece.rk.k], rIdx = (r + rc[0]) * SIZE + c + rc[1];
+      state.rare = state.rare || {}; state.rare[rIdx] = placedPiece.rk.t;
+    }
+    var rareGone = [], lastRareKinds = {};
+    if (state.rare) Object.keys(state.rare).forEach(function (k) { if (state.board[+k] < 0) { rareGone.push(+k); lastRareKinds[+k] = state.rare[k]; delete state.rare[k]; } });
+    tagRares();
+    if (state.mode === 'weekly') state.moves = (state.moves || '') + String.fromCharCode(Weekly.packMove(slot, r, c)); // prova da partida
     if (snap) { lastSnap = snap; lastStatsSnap = statsSnap; }
     if (!res.lineCount) announce(T('Peça colocada.'));
-    var now = performance.now(), lvl = settings.anim, th = boardTheme(), geo = { cell: L.cell, pad: L.pad, size: L.size };
+    var now = animNow(), lvl = settings.anim, th = boardTheme(), geo = { cell: L.cell, pad: L.pad, size: L.size };
     var colorOf = function (ci) { var p = pal(th); return p[ci % p.length]; };
     Sound.placeSkin(curSkin());
     if (!res.lineCount) haptic('place'); // toque firme a cada peça encaixada
     // encaixe: pequena expansão e retorno + faíscas discretas
     if (lvl !== 'off') anims.push({ type: 'pop', cells: res.placed, color: res.color, theme: th, start: now, dur: lvl === 'full' ? 220 : 140 });
     if (partsOn()) anims.push(Fx.sparks(res.placed, colorOf(res.color), geo, now, anims));
+    var pkGone = rareGone.filter(function (ri) { return lastRareKinds[ri] === 'pk'; }).length;
+    if (pkGone) { // v1.24: Semana do Terror — abóboras limpas
+      state.pk = (state.pk || 0) + pkGone;
+      var evn = eventNow();
+      if (state.mode === 'event' && evn && !state.pkDone && state.pk >= evn.goal) {
+        state.pkDone = true; stats.rares = stats.rares || {}; stats.rares.pk = 1; saveStats();
+        reward('trophy', T('Desafio do evento concluído! 🎃'), T('A Abóbora agora é um bloco raro seu para sempre.'));
+        later(function () { Sound.record(); }, 400);
+      }
+    }
+    if (rareGone.length) { // v1.24: limpar bloco raro faz festa (brilho branco + som de recompensa)
+      rareGone.forEach(function (ri, n) { if (partsOn()) anims.push(Fx.sparks([[Math.floor(ri / SIZE), ri % SIZE]], '#ffffff', geo, now + 200 + n * 60, anims)); });
+      later(function () { Sound.star && Sound.star(); }, 260);
+      popup('✨ ' + rareName(rareGone.length && lastRareKinds[rareGone[0]] || 'r1'), [Math.floor(rareGone[0] / SIZE), rareGone[0] % SIZE], 'pts-small', 0.6, false, 250);
+    }
 
     if (res.gems && res.gems.length) { // v1.17: gemas coletadas — brilho, faíscas e "+1" na casa
       res.gems.forEach(function (rc, k) {
@@ -808,11 +1017,16 @@
       }
       var breakSkin = curSkin();
       // v1.23 (menos poluição sonora): escala + UM detalhe — combo (se houver), senão a quebra do estilo, senão o "boom"
-      if (res.combo >= 2) { Sound.clear(res.lineCount, res.combo, null); Sound.combo(res.combo); }
+      if (res.combo >= 3 && eventNow() && Math.random() < 0.5) later(function () { Sound.ghost(); }, 300); // v1.24: fantasma no combo (evento)
+    if (res.combo >= 2) { Sound.clear(res.lineCount, res.combo, null); Sound.combo(res.combo); }
       else if (Sound.hasBreak(breakSkin)) { Sound.clear(res.lineCount, res.combo, null); later(function () { Sound.breakSkin(breakSkin, res.lineCount); }, charge * 0.6); }
       else Sound.clear(res.lineCount, res.combo, 'boom');
       if (res.boardClear) haptic('celebrate'); else if (res.combo >= 2) haptic('combo', res.combo); else haptic(res.lineCount > 1 ? 'lines' : 'line');
-      if (lvl === 'full' && (res.lineCount >= 2 || res.boardClear)) later(function () { shake(res.boardClear || res.lineCount >= 3 ? 'big' : ''); }, charge);
+      if (lvl === 'full' && (res.lineCount >= 2 || res.boardClear || res.combo >= 5)) later(function () { shake(res.boardClear || res.lineCount >= 3 || res.combo >= 8 ? 'big' : ''); }, charge);
+      if (lvl === 'full' && settings.fx === 'full' && (res.lineCount >= 3 || res.boardClear)) { // v1.24: câmera lenta na jogada épica
+        slowMo(650, 0.3, Math.max(0, charge - 40));
+        later(function () { boardBox.classList.remove('epic'); void boardBox.offsetWidth; boardBox.classList.add('epic'); }, Math.max(0, charge - 40));
+      }
       // cada mensagem em sua faixa, para não se sobreporem: pontos na jogada, elogio, combo, recompensas
       // faixas fixas (em linhas do tabuleiro) para as mensagens não se sobreporem
       var mid = SIZE / 2 - 0.5, lane = res.boardClear ? { points: 6.7 } : { points: 0 };
@@ -833,7 +1047,7 @@
       }
       if (res.boardClear) { // recompensa especial: contorno brilhando, confete e bônus
         // v1.23: limpeza perfeita é a única mensagem grande da jogada (o bônus vai junto, pequeno)
-        popup(T('Limpeza perfeita!') + ' <small>+' + fmt(Math.floor(+res.clearPts) || 0) + '</small>', [4.2, mid], 'big clear', 0, true, 200);
+        popup(T('Limpeza perfeita!') + '<br><small>+' + fmt(Math.floor(+res.clearPts) || 0) + '</small>', [4.2, mid], 'big clear', 0, true, 200);
         if (lvl !== 'off') anims.push({ type: 'boardGlow', color: th.accent, start: now + charge, dur: 1300 });
         if (partsOn()) anims.push(Fx.confetti(pal(th), geo, now + charge, 80, anims));
         later(function () { Sound.boardClear(); }, 250);
@@ -854,7 +1068,7 @@
       announce(T('Novo recorde!'));
     }
     // v1.23 (pedido do dono): "Faltam X para o seu recorde!" ao chegar a 75% e a 90% do recorde (uma vez cada)
-    if ((state.mode === 'classic' || state.mode === 'daily') && !state.recordShown && state.startBest > 0 && state.score < state.startBest) {
+    if ((state.mode === 'classic' || state.mode === 'daily' || state.mode === 'weekly') && !state.recordShown && state.startBest > 0 && state.score < state.startBest) {
       var stage = state.score >= state.startBest * 0.9 ? 2 : state.score >= state.startBest * 0.75 ? 1 : 0;
       if (stage > (state.nearShown || 0)) {
         state.nearShown = stage;
@@ -864,9 +1078,9 @@
     surpriseAfterMove(res, recordNow, prevCombo);
     if (prevCombo >= 2 && state.combo === 0 && state.mode !== 'tutorial') comboEnded(prevCombo);
     if (res.levelUp) { // subiu de nível: multiplicador maior (também no último passo do tutorial)
-      popup(T('Nível {n}!', { n: res.level }) + ' ×' + multText(res.level), [SIZE - 2.6, SIZE / 2 - 0.5], 'level', 0, false, res.lineCount ? 1050 : 0);
+      popup(T('Fase {n}!', { n: res.level }) + ' ×' + multText(res.level), [SIZE - 2.6, SIZE / 2 - 0.5], 'level', 0, false, res.lineCount ? 1050 : 0);
       later(function () { Sound.record(); var ch = $('#lvl-chip'); ch.classList.remove('up'); void ch.offsetWidth; ch.classList.add('up'); }, res.lineCount ? 1050 : 0);
-      announce(T('Nível {n}, multiplicador ×{m}.', { n: res.level, m: multText(res.level) }));
+      announce(T('Fase {n}, multiplicador ×{m}.', { n: res.level, m: multText(res.level) }));
     }
     updateScore();
     updateComboChip();
@@ -934,7 +1148,7 @@
   /** v1.20: nome da conquista que causou a mudança. */
   function eventTitle(ev) {
     if (!ev) return T('Transformação!');
-    if (ev.id === 'level') return T('Nível {n}!', { n: ev.value });
+    if (ev.id === 'level') return T('Fase {n}!', { n: ev.value });
     if (ev.id === 'clear') return T('Limpeza perfeita!');
     if (ev.id === 'record') return T('Novo recorde!');
     if (ev.id === 'milestone') return T('Marco de {n} pontos!', { n: fmt(ev.value) });
@@ -958,8 +1172,8 @@
     }
     var big = !!(d && d.big) && settings.fx === 'full'; // efeitos reduzidos: troca simples, sem brilho extra
     if (settings.anim !== 'off') {
-      anims.push({ type: 'morph', from: from, to: to, r: origin[0], c: origin[1], start: performance.now(), dur: settings.fx === 'reduced' ? 450 : big ? 1100 : 800 });
-      if (big) anims.push({ type: 'shine', start: performance.now() + 500, dur: 900 });
+      anims.push({ type: 'morph', from: from, to: to, r: origin[0], c: origin[1], start: animNow(), dur: settings.fx === 'reduced' ? 450 : big ? 1100 : 800 });
+      if (big) anims.push({ type: 'shine', start: animNow() + 500, dur: 900 });
     }
     drawTray(false);
     paintBg(); // o fundo da tela muda junto com os blocos
@@ -1060,6 +1274,7 @@
     }
     if (danger && !b.classList.contains('danger')) announce(T('Cuidado: quase sem espaço.'));
     b.classList.toggle('danger', danger);
+    b.classList.toggle('on-fire', on && !danger && k >= 10 && settings.anim !== 'off'); // v1.24: fogo no combo ×10
   }
   function updateComboChip() {
     updateBoardMood();
@@ -1096,10 +1311,10 @@
     var th = THEMES[themeIdx], lk = tempSkin(), sb = lk && Skins.BG[lk];
     if (!sb) return th;
     var key = th.id + '@' + lk;
-    if (!boardThemes[key]) boardThemes[key] = Object.assign({}, th, {
+    if (!boardThemes[key]) boardThemes[key] = Vis.fix(Object.assign({}, th, {
       id: key, board: mixHex(sb[1], '#000000', 0.22), grid: mixHex(sb[1], '#000000', 0.3),
       empty: mixHex(sb[0], sb[1], 0.55), emptyEdge: mixHex(sb[0], '#ffffff', 0.2)
-    });
+    }), sb[0], sb[1]);
     return boardThemes[key];
   }
   /** Fundo da tela: o do visual atual, ou — durante uma transformação de blocos — o fundo próprio daquele estilo. */
@@ -1144,7 +1359,7 @@
     if (animate) {
       if (settings.anim !== 'off' && from !== to) {
         anims = anims.filter(function (a) { return a.type !== 'sweep'; });
-        anims.push({ type: 'sweep', from: from, to: to, start: performance.now(), dur: settings.anim === 'full' ? 1000 : 360 });
+        anims.push({ type: 'sweep', from: from, to: to, start: animNow(), dur: settings.anim === 'full' ? 1000 : 360 });
       }
       toast('✦ ' + T('Novo visual: {name}', { name: T(to.name) }), T(to.msg));
       announce(T('Novo visual: {name}', { name: T(to.name) }) + '.');
@@ -1152,7 +1367,7 @@
       haptic('reward');
       if (settings.anim !== 'off' && settings.fx === 'full') { // clarão suave na tela inteira + confete nas cores novas
         var fl = $('#theme-flash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
-        if (partsOn() && screenIs('game')) anims.push(Fx.confetti(pal(to), { cell: L.cell, pad: L.pad, size: L.size }, performance.now(), 60, anims));
+        if (partsOn() && screenIs('game')) anims.push(Fx.confetti(pal(to), { cell: L.cell, pad: L.pad, size: L.size }, animNow(), 60, anims));
       }
     }
     requestRender();
@@ -1210,6 +1425,19 @@
   function today() { return Progress.dateKey(); }
   var wiping = false; // durante "Apagar todos os dados" nada é gravado
   function saveStats() { if (!wiping) store.set('gb.stats', stats); }
+  // v1.24: Temporada 1 — recordes zeram; o recorde antigo fica guardado como "lendário" (js/season.js)
+  var seasonNews = null;
+  var forcedEvent = /[?&]debug\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? (/[?&]event=([a-z]+)/.exec(location.search) || [])[1] : null;
+  function eventNow() { return Events.current(today(), forcedEvent); } // v1.24: evento por data (Semana do Terror)
+  (function startSeason() {
+    var r = Season.startSeason(stats);
+    if (stats.season !== Season.SEASON) return;
+    var old = store.get('gb.records', null);
+    if (r.started && old) { store.set('gb.records.s0', old); store.del('gb.records'); }
+    if (r.started) ['classic', 'daily'].forEach(function (m) { var sv = store.get('gb.save.' + m, null); if (sv && typeof sv === 'object') { sv.startBest = 0; store.set('gb.save.' + m, sv); } });
+    store.set('gb.stats', stats);
+    if (r.started) seasonNews = r;
+  })();
   try { Progress.ensureMissions(stats, today()); } catch (e) { stats = Progress.newStats(); Progress.ensureMissions(stats, today()); }
   if (!Progress.isUnlocked(stats, settings.blocks)) settings.blocks = 'classic';
   saveStats();
@@ -1218,11 +1446,43 @@
   var pendingRewards = [];
   function inPlay() { return !!state && screenIs('game') && !state.over && !locked && state.mode !== 'tutorial'; }
   function reward(kind, title, text) {
-    if (inPlay()) pendingRewards.push({ kind: kind, title: title, text: text });
+    if (inPlay() || (state && screenIs('game') && (locked || state.over))) pendingRewards.push({ kind: kind, title: title, text: text }); // v1.24: no fim de partida tudo vai para o cartão
     else toast(title, text, kind === 'trophy' ? 'trophy' : '');
   }
-  function flushRewards() { var list = pendingRewards; pendingRewards = []; list.forEach(function (r) { toast(r.title, r.text, r.kind === 'trophy' ? 'trophy' : ''); }); }
-  function reportMissions(list) { (list || []).forEach(function (m) { reward('mission', T('Missão concluída ★'), T(m.text)); }); }
+  function flushRewards() { // v1.24: no máximo 1 aviso de resumo (antes: um aviso por conquista, cobrindo a tela)
+    var list = pendingRewards; pendingRewards = [];
+    if (!list.length) return;
+    if (list.length === 1) { toast(list[0].title, list[0].text, list[0].kind === 'trophy' ? 'trophy' : ''); return; }
+    toast(T('{n} novidades nesta partida', { n: list.length }), list.slice(0, 3).map(function (r) { return r.title; }).join(' · '), 'trophy');
+  }
+  function reportMissions(list) { (list || []).forEach(function (m) { reward('mission', T('Missão concluída ★'), T(m.text) + ' · +25 XP'); gainXp(25); }); }
+  /* v1.24: XP do jogador e sequência de dias */
+  function gainXp(n) {
+    var r = Season.addXp(stats, n);
+    r.levelsUp.forEach(function (lv) {
+      var t = Season.titleFor(lv), tNew = t !== Season.titleFor(lv - 1);
+      reward('trophy', T('Você subiu para o nível {n} de jogador!', { n: lv }), tNew ? T('Novo título: {t}', { t: T(t) }) : T('Continue jogando para o próximo nível.'));
+    });
+    return r;
+  }
+  function gameXpNow(extra) { // XP da partida que terminou; se ela continuar (reviver/desfazer) e terminar de novo, só a diferença
+    if (!state) return null;
+    var wk = Season.isWeekend(), base = (extra != null ? extra : Season.gameXp({ lines: state.lines, score: state.score }, false));
+    var newBase = Math.max(0, base - (state.xpBase || 0)), give = wk ? newBase * 2 : newBase; // só o dobro do que foi ganho no fim de semana
+    if (state.xpRes && !give) return state.xpRes;
+    var chest = state.mode !== 'tutorial' ? Season.openChest(stats, today(), Math.random) : null; // v1.24: baú da 1ª partida do dia
+    if (chest) { chest.xp = wk ? chest.xp * 2 : chest.xp; gainXp(chest.xp); state.chest = chest; }
+    var r = gainXp(give); r.weekend = wk; r.gained = (state.xpGiven || 0) + give;
+    state.xpBase = Math.max(state.xpBase || 0, base); state.xpGiven = r.gained; state.xpRes = r; saveStats();
+    return r;
+  }
+  function touchStreak() {
+    var r = Season.touchStreak(stats, today());
+    if (!r.changed) return;
+    if (r.reward) { gainXp(r.reward); reward('trophy', T('🔥 {n} dias seguidos!', { n: r.days }), T('Prêmio da sequência: +{x} XP', { x: r.reward })); }
+    else if (r.usedShield) reward('mission', T('🛡️ Escudo usado'), T('Você pulou um dia, mas a sequência de {n} dias foi salva.', { n: r.days }));
+    else if (r.days > 1) reward('mission', T('🔥 {n} dias seguidos!', { n: r.days }), T('Volte amanhã para continuar.'));
+  }
   function reportAchievements() {
     Progress.checkAchievements(stats, today()).forEach(function (a) { reward('trophy', T('Conquista: {name}', { name: a.name }), a.desc); });
   }
@@ -1238,10 +1498,35 @@
   function bestFor(mode) {
     if (mode === 'classic' || mode === 'zen') return stats.best[mode] || 0;
     if (mode === 'daily') return stats.daily.day === today() ? stats.daily.best : 0;
+    if (mode === 'weekly') return weeklyData().best || 0;
     return 0;
   }
+  /* v1.24: Desafio da Semana (js/weekly.js) — guardado em gb.weekly; placar dos amigos em gb.galera */
+  function weekNow() { return Season.weekKey(today()); }
+  function weeklyData() {
+    var d = store.get('gb.weekly', null);
+    return d && d.week === weekNow() && typeof d.best === 'number' ? d : { week: weekNow(), best: 0, moves: '' };
+  }
+  function galera() {
+    var g = store.get('gb.galera', null);
+    if (!g || g.week !== weekNow() || !Array.isArray(g.list)) g = { week: weekNow(), list: [] };
+    g.list = g.list.filter(function (e) { return e && typeof e.name === 'string' && typeof e.score === 'number' && isFinite(e.score); }).slice(0, 50);
+    return g;
+  }
+  function weeklyPlace(score, record) { // v1.24: posição na galera no fim do Desafio da Semana
+    var others = galera().list.filter(function (x) { return !x.me; }), best = Math.max(score, bestFor('weekly'));
+    if (!others.length) return (record ? '' : T('Melhor da semana: {n}', { n: fmt(best) }) + ' · ') + T('Mande seu código para a galera e veja quem faz mais.');
+    var pos = 1 + others.filter(function (x) { return x.score > best; }).length;
+    return T('Você está em {p}º de {t} na galera.', { p: pos, t: others.length + 1 }) + (record ? '' : ' ' + T('Melhor da semana: {n}', { n: fmt(best) }));
+  }
+  function nick() { return Weekly.cleanName(settings.nick || ''); }
   function setBest(mode, v) {
     if (mode === 'classic' || mode === 'zen') stats.best[mode] = v;
+    else if (mode === 'weekly') {
+      if (!state || state.week !== weekNow()) return;
+      store.set('gb.weekly', { week: state.week, best: v, moves: state.moves || '' }); // as jogadas viram o código de prova
+      if (nick() || galera().list.some(function (x) { return x.me; })) addMineToGalera();
+    }
     else if (mode === 'daily') {
       if (!state || state.day !== today()) return; // partida que atravessou a meia-noite não conta para hoje
       if (stats.daily.day !== today()) stats.daily = { day: today(), best: 0, played: 0 };
@@ -1260,6 +1545,8 @@
     if (!Logic.isValidState(s)) return null;
     if (mode !== 'zen' && (s.over || !Logic.hasAnyMove(s))) return null;
     if (mode === 'daily' && s.day !== today()) return null;
+    if (mode === 'weekly' && (s.week !== weekNow() || typeof s.moves !== 'string')) return null;
+    if (mode === 'event' && !eventNow()) return null;
     if (mode === 'challenge' && !Progress.CHALLENGES.some(function (c) { return c.id === s.chId; })) return null;
     s.mode = mode;
     return s;
@@ -1301,6 +1588,11 @@
         state.gems = Progress.gemsFromRows(def.board, SIZE); state.gemsGot = 0; // v1.17: Aventura — gemas
         state.queue = Logic.makeQueue(def.seed, def.pieces);
         state.pieces = state.queue.splice(0, 3);
+      } else if (mode === 'classic' && !(stats.gamesByMode && stats.gamesByMode.classic) && !(stats.best && stats.best.classic)) {
+        state.easy = true; // v1.24 (dono): primeira partida do Clássico mais fácil + meta da medalha de Madeira
+      } else if (mode === 'weekly') { // mesmas peças para todo mundo na semana; sem desfazer e sem reviver
+        var wg = Weekly.newGame(weekNow());
+        state.seed = wg.seed; state.week = wg.week; state.moves = ''; state.pieces = wg.pieces; state.undoLeft = 0;
       } else if (mode === 'daily') {
         var d = Progress.daily(today());
         state.day = d.day;
@@ -1313,11 +1605,14 @@
       state.startBest = bestFor(mode);
       saveStats();
     }
-    if (typeof state.undoLeft !== 'number') state.undoLeft = mode === 'daily' ? 0 : 1;
+    if (typeof state.undoLeft !== 'number') state.undoLeft = mode === 'daily' || mode === 'weekly' ? 0 : 1;
     if (typeof state.startBest !== 'number') state.startBest = bestFor(mode);
     if (!state.themeId) state.themeId = THEMES[0].id; // toda partida nova começa no visual Clássico
     themeIdx = Themes.indexOfId(state.themeId);
     applyTheme(themeIdx, false);
+    if (state.rare && typeof state.rare === 'object') Object.keys(state.rare).forEach(function (k) { var i = +k; if (!(Number.isInteger(i) && i >= 0 && i < SIZE * SIZE) || !/^(r[1-3]|pk)$/.test(state.rare[k])) delete state.rare[k]; }); else delete state.rare;
+    state.pieces.forEach(function (p) { if (p && p.rk && !(/^(r[1-3]|pk)$/.test(p.rk.t) && SHAPES[p.s].cells[p.rk.k])) delete p.rk; });
+    tagRares();
     displayedScore = state.score;
     $('#score').textContent = fmt(state.score);
     updateComboChip();
@@ -1341,7 +1636,7 @@
     if (!state) return;
     var lv = Logic.levelFor(state.lines || 0), chip = $('#lvl-chip');
     chip.hidden = state.mode === 'tutorial' && tutStep < 3;
-    $('#lvl-n').setAttribute('data-label', T('Nível {n}', { n: '' }).trim());
+    $('#lvl-n').setAttribute('data-label', T('Fase {n}', { n: '' }).trim());
     $('#lvl-n').textContent = lv; $('#lvl-m').textContent = '×' + multText(lv); $('#lvl-m').hidden = lv <= 1; // v1.23: ×1 não diz nada
     chip.setAttribute('title', T('Multiplicador ×{m}', { m: multText(lv) }));
   }
@@ -1350,21 +1645,23 @@
     if (!state) return;
     updateBoardMood();
     var m = modeOf();
-    var icon = { classic: '#i-crown', zen: '#i-leaf', challenge: '#i-flag', daily: '#i-cal', tutorial: '#i-help' }[m] || '#i-crown';
+    var icon = { classic: '#i-crown', zen: '#i-leaf', challenge: '#i-flag', daily: '#i-cal', weekly: '#i-trophy', event: '#i-star', tutorial: '#i-help' }[m] || '#i-crown';
     $('#best-icon').setAttribute('href', icon);
     var label = '', val = '';
     if (m === 'classic') { label = T('Recorde'); val = fmt(Math.max(bestFor(m), state.score)); }
     else if (m === 'zen') { label = T('Modo'); val = T('Zen'); }
     else if (m === 'daily') { label = T('Melhor de hoje'); val = fmt(Math.max(bestFor(m), state.score)); }
+    else if (m === 'weekly') { label = T('Melhor da semana'); val = fmt(Math.max(bestFor(m), state.score)); }
     else if (m === 'challenge') { label = T('Desafio'); val = T(challengeDef(state.chId).name); }
+    else if (m === 'event') { label = T('Evento'); val = T('Semana do Terror'); }
     else { val = T('Tutorial'); }
     $('#best-label').textContent = label;
     $('#best').textContent = val;
-    $('#best-mini').classList.toggle('text', m === 'zen' || m === 'challenge' || m === 'tutorial');
-    var bestNow = (m === 'classic' || m === 'daily') ? bestFor(m) : 0; // v1.23: recorde discreto; acende quando você chega perto
+    $('#best-mini').classList.toggle('text', m === 'zen' || m === 'challenge' || m === 'tutorial' || m === 'event');
+    var bestNow = (m === 'classic' || m === 'daily' || m === 'weekly') ? bestFor(m) : 0; // v1.23: recorde discreto; acende quando você chega perto
     $('#best-mini').classList.toggle('near', bestNow > 0 && state.score >= bestNow * 0.8);
 
-    var u = $('#btn-undo'), canUndo = m !== 'tutorial' && m !== 'daily';
+    var u = $('#btn-undo'), canUndo = m !== 'tutorial' && m !== 'daily' && m !== 'weekly';
     u.hidden = !canUndo;
     u.disabled = !lastSnap || state.undoLeft <= 0 || locked;
     $('#undo-count').textContent = Math.max(0, state.undoLeft);
@@ -1383,6 +1680,23 @@
       $('#goal-text').textContent = T('Desafio do dia');
       $('#goal-progress').style.width = (100 * state.placed / Progress.DAILY_PIECES).toFixed(1) + '%';
       $('#goal-extra').textContent = T('{n} peças restantes', { n: Progress.DAILY_PIECES - state.placed });
+    } else if (m === 'classic' && state.easy && state.score < 5000) { // v1.24: meta da primeira partida
+      gb.hidden = false;
+      $('#goal-text').textContent = '🪵 ' + T('Primeira medalha');
+      $('#goal-progress').style.width = Math.min(100, state.score / 50).toFixed(1) + '%';
+      $('#goal-extra').textContent = T('Faça {n} pontos', { n: fmt(5000) });
+    } else if (m === 'event') { // v1.24: Semana do Terror
+      var evg = eventNow(), goal = evg ? evg.goal : 25, got = Math.min(goal, state.pk || 0);
+      gb.hidden = false;
+      $('#goal-text').textContent = '🎃 ' + T('Desafio do evento');
+      $('#goal-progress').style.width = (100 * got / goal).toFixed(1) + '%';
+      $('#goal-extra').textContent = state.pkDone ? T('Concluído!') : T('{a}/{b} abóboras', { a: got, b: goal });
+    } else if (m === 'weekly') { // v1.24: posição no placar da galera
+      gb.hidden = false;
+      var gl = galera().list.filter(function (x) { return !x.me; }), ahead = gl.filter(function (x) { return x.score > state.score; }).sort(function (a, b) { return a.score - b.score; })[0];
+      $('#goal-text').textContent = T('Desafio da Semana');
+      $('#goal-progress').style.width = ahead ? Math.min(100, 100 * state.score / ahead.score).toFixed(1) + '%' : (gl.length ? '100%' : '0%');
+      $('#goal-extra').textContent = ahead ? T('Faltam {n} para passar {name}', { name: ahead.name, n: fmt(ahead.score - state.score) }) : (gl.length ? T('Você está em 1º na galera!') : T('Mesmas peças para todos'));
     } else gb.hidden = true;
   }
 
@@ -1395,9 +1709,13 @@
     var before = unlockedNow();
     Progress.ensureMissions(stats, today());
     if (!state.counted) { state.counted = true; reportMissions(Progress.onGameStart(stats, m)); }
+    if (m !== 'tutorial' && stats.streak && stats.streak.last !== today()) touchStreak(); // v1.24: conta também quem só continua partida salva
     // no Zen, depois do primeiro alívio os pontos não valem para conquistas de pontos (seria fácil demais)
     reportMissions(Progress.onMove(stats, res, m === 'zen' && state.reliefs ? null : state));
-    if ((m === 'classic' || m === 'zen' || m === 'daily') && state.score > bestFor(m)) setBest(m, state.score);
+    if ((m === 'classic' || m === 'zen' || m === 'daily' || m === 'weekly') && state.score > bestFor(m)) setBest(m, state.score);
+    if (m === 'classic' || m === 'zen' || m === 'daily') Season.unlockRares(stats, state.score).forEach(function (rr) { // v1.24: bloco raro liberado
+      reward('trophy', T('Bloco raro liberado: {name}!', { name: T(rr.name) }), T('A partir de agora ele aparece às vezes nas suas peças. Limpe para ver o brilho!'));
+    });
     reportAchievements();
     reportUnlocks(before);
     saveStats();
@@ -1411,8 +1729,8 @@
       return;
     }
     updateHud();
-    if (res.over && m === 'zen') { store.set(saveKey('zen'), state); scheduleGameOver(); }
-    else if (res.over) { store.del(saveKey(m)); if (m === 'classic' || m === 'daily') addRecord(); scheduleGameOver(); }
+    if (res.over && m === 'zen') { gameXpNow(); store.set(saveKey('zen'), state); scheduleGameOver(); }
+    else if (res.over) { store.del(saveKey(m)); if (m === 'classic' || m === 'daily') addRecord(); if (m === 'weekly') addMineToGalera(); if (m !== 'tutorial') gameXpNow(); scheduleGameOver(); }
     else saveGame();
   }
 
@@ -1429,16 +1747,17 @@
     locked = true;
     updateHud();
     var delay = settings.anim === 'off' ? 350 : 1300;
-    if (settings.anim !== 'off') { anims.push({ type: 'gray', start: performance.now(), dur: delay + 400 }); requestRender(); }
+    if (settings.anim !== 'off') { anims.push({ type: 'gray', start: animNow(), dur: delay + 400 }); requestRender(); }
     gameOverTimer = later(showGameOver, delay);
   }
 
   function comboText(n) { return n >= 2 ? '×' + n : '—'; }
-  function canUndoNow() { return !!lastSnap && state && state.undoLeft > 0 && modeOf() !== 'daily'; }
+  function canUndoNow() { return !!lastSnap && state && state.undoLeft > 0 && modeOf() !== 'daily' && modeOf() !== 'weekly'; }
 
   function showGameOver() {
     var m = modeOf(), score = state.score;
     Sound.gameover();
+    if (eventNow()) later(function () { Sound.howl(); }, 500); // v1.24: uivo no fim de partida (evento)
     haptic('gameover');
     if (m === 'zen') {
       showResult({
@@ -1459,6 +1778,22 @@
       return;
     }
     var record = score > (state.startBest || 0) && score > 0;
+    if (m === 'weekly') {
+      showResult({
+        title: T('Desafio da Semana'), badge: record ? T('Seu melhor da semana!') : '', big: fmt(score), countUp: score, record: record,
+        sub: weeklyPlace(score, record),
+        xp: state.xpRes,
+        stats: [[fmt(state.lines), T('linhas')], [comboText(state.maxCombo), T('maior combo')], [String(Logic.levelFor(state.lines)), T('fase')]],
+        buttons: [
+          { label: T('Mandar meu placar para a galera'), cls: 'primary big', fn: function () { shareWeekly(); } },
+          { label: T('Jogar de novo'), fn: function () { startGame('weekly'); } },
+          { label: T('Placar da galera'), fn: function () { closeOverlay('#ov-over'); show('records'); } },
+          { label: T('Tela inicial'), cls: 'ghost-dark', fn: goHome }
+        ]
+      });
+      announce(T('Fim de partida. {n} pontos.', { n: score }));
+      return;
+    }
     var isDaily = m === 'daily';
     var piecesOut = isDaily && state.placed >= Progress.DAILY_PIECES;
     showResult({
@@ -1467,7 +1802,8 @@
       big: fmt(score), countUp: score, record: record,
       sub: (isDaily ? T('Melhor de hoje: {n}', { n: fmt(bestFor(m)) }) : T('Recorde: {n}', { n: fmt(bestFor(m)) })) +
         (record && state.startBest > 0 ? ' · ' + T('+{n} acima do recorde anterior', { n: fmt(score - state.startBest) }) : ''),
-      stats: [[fmt(state.lines), T('linhas')], [comboText(state.maxCombo), T('maior combo')], [isDaily ? state.placed + '/' + Progress.DAILY_PIECES : String(Logic.levelFor(state.lines)), isDaily ? T('peças') : T('nível')]],
+      medal: Season.medalFor(score), nextMedal: Season.nextMedal(score), score: score, xp: state.xpRes,
+      stats: [[fmt(state.lines), T('linhas')], [comboText(state.maxCombo), T('maior combo')], [isDaily ? state.placed + '/' + Progress.DAILY_PIECES : String(Logic.levelFor(state.lines)), isDaily ? T('peças') : T('fase')]],
       buttons: [
         canRevive() ? { label: T('Continuar: 3 peças novas (grátis, 1×)'), cls: 'primary big revive', fn: revive } : null,
         { label: T('Jogar novamente'), cls: canRevive() ? '' : 'primary big', fn: function () { startGame(m); } },
@@ -1496,11 +1832,12 @@
       chRewards.forEach(function (cr) { pendingRewards.push({ kind: 'trophy', title: T('Capítulo concluído: {name}', { name: T(cr.chapter.name) }), text: T('Novo estilo na Coleção: {name}', { name: skinName(cr.skin) }) }); }); // aparece no cartão do resultado
       lastSnap = null; updateHud();
     }
+    if (state.mode === 'challenge') gameXpNow(won ? 30 + 15 * (r ? r.stars : 0) : 10);
     later(function () {
       if (won) {
         Sound.theme(); haptic('reward');
         showResult({
-          title: T('Desafio concluído!'), stars: r.stars, big: T(def.name),
+          title: T('Desafio concluído!'), stars: r.stars, big: T(def.name), xp: state.xpRes,
           sub: T('Você usou {p} de {t} peças. 3 estrelas: até {par} peças.', { p: placed, t: def.pieces, par: def.par }),
           stats: [[fmt(score), T('pontos')], [fmt(lines), T('linhas')], [comboText(combo), T('maior combo')]],
           buttons: [
@@ -1542,6 +1879,20 @@
     }
     if (o.big) card.appendChild(el('div', o.big.length > 9 ? 'final-score small' : 'final-score', o.big));
     if (o.sub) card.appendChild(el('p', 'muted', o.sub));
+    if (o.medal || o.nextMedal) { // v1.24: medalha da partida (Bronze 50 mil · Prata 200 mil · Ouro 500 mil · Diamante 1 milhão)
+      var md = el('div', 'medal-row' + (o.medal ? ' ' + o.medal.id : ''));
+      if (o.medal) { md.appendChild(el('span', 'medal-ic', o.medal.icon)); md.appendChild(el('strong', '', T('Medalha de {m}', { m: T(o.medal.name) }))); }
+      if (o.nextMedal) md.appendChild(el('small', '', T('Faltam {n} para {m}', { n: fmt(o.nextMedal.min - (o.score || 0)), m: o.nextMedal.icon + ' ' + T(o.nextMedal.name) })));
+      card.appendChild(md);
+    }
+    if (o.xp) card.appendChild(xpBlock(o.xp));
+    if (o.xp && state && state.chest && !state.chestShown) { // v1.24: baú do dia
+      state.chestShown = true;
+      var ch = el('div', 'chest-row' + (state.chest.big ? ' big' : ''));
+      ch.appendChild(el('span', 'chest-ic', '🎁')); ch.appendChild(el('strong', '', T('Baú do dia: +{n} XP', { n: fmt(state.chest.xp) })));
+      ch.appendChild(el('small', '', state.chest.big ? T('Prêmio grande! Volte amanhã para outro baú.') : T('Volte amanhã para outro baú.')));
+      card.appendChild(ch); later(function () { Sound.record(); }, 600);
+    }
     if (o.list) { var ul = el('ul', 'rules'); o.list.forEach(function (t) { ul.appendChild(el('li', '', t)); }); card.appendChild(ul); }
     if (o.stats) {
       var g = el('div', 'over-stats');
@@ -1555,6 +1906,19 @@
       stack.appendChild(bt);
     });
     card.appendChild(stack);
+  }
+  function xpBlock(x) {
+    var b = el('div', 'xp-box' + (x.levelsUp && x.levelsUp.length ? ' up' : ''));
+    var top = el('div', 'xp-top');
+    top.appendChild(el('strong', 'xp-gain', '+' + fmt(x.gained) + ' XP' + (x.weekend ? ' ×2' : '')));
+    top.appendChild(el('span', 'xp-lv', (x.levelsUp && x.levelsUp.length ? '⬆ ' : '') + T('Jogador nível {n}', { n: x.after.level })));
+    b.appendChild(top);
+    var bar = el('div', 'xp-bar'), fill = el('i');
+    var pct = Math.round(100 * x.after.cur / x.after.need), from = x.levelsUp && x.levelsUp.length ? 0 : Math.round(100 * x.before.cur / x.before.need);
+    fill.style.width = from + '%'; bar.appendChild(fill); b.appendChild(bar);
+    setTimeout(function () { fill.style.width = pct + '%'; }, 250);
+    b.appendChild(el('small', 'muted', T(x.after.title) + ' · ' + T('{c}/{n} XP para o próximo', { c: fmt(x.after.cur), n: fmt(x.after.need), l: x.after.level + 1 })));
+    return b;
   }
   function showResult(o) {
     buildCard($('#over-card'), o, 'over-title');
@@ -1618,7 +1982,7 @@
   /** Pede confirmação antes de descartar uma partida salva do mesmo modo. */
   function confirmReplace(mode, startNew, resume) {
     if (!hasSave(mode)) { startNew(); return; }
-    var names = { classic: 'Clássico', zen: 'Zen', challenge: 'Desafio', daily: 'Desafio do dia' };
+    var names = { classic: 'Clássico', zen: 'Zen', challenge: 'Desafio', daily: 'Desafio do dia', weekly: 'Desafio da Semana', event: 'Desafio do evento' };
     showDialog({
       title: T('Partida em andamento'),
       list: [T('Você tem uma partida do modo {mode} salva.', { mode: T(names[mode]) }), T('Se começar outra, a partida salva será perdida.')],
@@ -1655,7 +2019,7 @@
     cancelLater(); closeOverlay('#ov-over');
     if (!Logic.revive(state, Math.random)) { toast(T('Nenhuma peça cabe mais'), ''); return; }
     locked = false; lastSnap = null; anims = anims.filter(function (a) { return a.type !== 'gray'; }); fx.innerHTML = '';
-    if (settings.anim !== 'off') { anims.push({ type: 'shine', start: performance.now(), dur: 900 }); var fl = $('#theme-flash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on'); }
+    if (settings.anim !== 'off') { anims.push({ type: 'shine', start: animNow(), dur: 900 }); var fl = $('#theme-flash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on'); }
     Sound.transform(true); haptic('reward');
     drawTray(true); slots.forEach(function (sl) { sl.classList.remove('revived'); void sl.offsetWidth; sl.classList.add('revived'); });
     playClock = Date.now(); updateHud(); saveGame(); requestRender();
@@ -1666,7 +2030,7 @@
   /* ---------------- Zen: continuar sem fim de partida ---------------- */
   function zenContinue() {
     closeOverlay('#ov-over');
-    var cleared = Logic.zenRelief(state, rngFor(state)), now = performance.now();
+    var cleared = Logic.zenRelief(state, rngFor(state)), now = animNow();
     locked = false; lastSnap = null;
     anims = anims.filter(function (a) { return a.type !== 'gray'; });
     if (settings.anim !== 'off') {
@@ -1703,12 +2067,12 @@
     // nome do jogo (última letra em amarelo, como na tela inicial)
     g.font = disp(150); var head = GAME_NAME.slice(0, -1), tail = GAME_NAME.slice(-1), wHead = g.measureText(head).width, wTail = g.measureText(tail).width, x0 = W / 2 - (wHead + wTail) / 2;
     g.textAlign = 'left'; shadowText(head, x0, 230, '#ffffff'); shadowText(tail, x0 + wHead, 230, '#ffc21e', '#b4410a'); g.textAlign = 'center';
-    var modeName = { classic: T('Clássico'), zen: T('Zen'), daily: T('Desafio do dia'), challenge: state.chId ? T(challengeDef(state.chId).name) : T('Desafios') }[m] || T('Clássico');
+    var modeName = { classic: T('Clássico'), zen: T('Zen'), daily: T('Desafio do dia'), weekly: T('Desafio da Semana'), challenge: state.chId ? T(challengeDef(state.chId).name) : T('Desafios') }[m] || T('Clássico');
     g.font = body(46); g.fillStyle = 'rgba(255,255,255,.85)'; g.fillText(modeName.toUpperCase(), W / 2, 320);
     g.font = disp(170); shadowText(fmt(state.score), W / 2, 500, '#ffffff');
     var info = [];
     if (state.maxCombo > 1) info.push(T('Combo máx. ×{n}', { n: state.maxCombo }));
-    info.push(T('Nível {n}', { n: Logic.levelFor(state.lines || 0) }));
+    info.push(T('Fase {n}', { n: Logic.levelFor(state.lines || 0) }));
     g.font = body(48); g.fillStyle = '#ffd54a'; g.fillText(info.join('  ·  '), W / 2, 580);
     // tabuleiro final
     var bs = 800, bx = (W - bs) / 2, by = 640, pad = 22, cell = (bs - pad * 2) / SIZE, px = Math.round(cell);
@@ -1718,8 +2082,14 @@
       var v = state.board[r * SIZE + cc];
       g.drawImage(sprite(bt, v < 0 ? -1 : v, px), bx + pad + cc * cell, by + pad + r * cell, cell, cell);
     }
-    g.font = disp(76); shadowText(T('Me bate se for capaz!'), W / 2, 1560, '#ffffff');
-    g.font = body(50); g.fillStyle = '#4fe3ff'; g.fillText(T('Jogue grátis: {url}', { url: SITE_URL }), W / 2, 1650);
+    // v1.24: medalha, nível do jogador e sequência de dias
+    var md = Season.medalFor(state.score), plv = Season.levelOf(stats.xp || 0), skd = Season.streakNow(stats, today()), tags = [];
+    if (md) tags.push(md.icon + ' ' + T('Medalha de {m}', { m: T(md.name) }));
+    tags.push(T('Jogador nível {n}', { n: plv.level }));
+    if (skd > 1) tags.push('🔥 ' + skd);
+    g.font = body(46); g.fillStyle = 'rgba(255,255,255,.92)'; g.fillText(tags.join('  ·  '), W / 2, 1520);
+    g.font = disp(76); shadowText(T('Me bate se for capaz!'), W / 2, 1630, '#ffffff');
+    g.font = body(50); g.fillStyle = '#4fe3ff'; g.fillText(T('Jogue grátis: {url}', { url: SITE_URL }), W / 2, 1720);
     return new Promise(function (res, rej) { c.toBlob(function (b) { b ? res(b) : rej(new Error('sem imagem')); }, 'image/png'); });
   }
   function saveImage(blob) {
@@ -1806,7 +2176,7 @@
     if (skipped && tutFrom === 'help') { goHome(); return; }
     showDialog({
       title: skipped ? T('Tutorial pulado') : T('Pronto para jogar!'),
-      list: [T('As peças não giram.'), T('Limpe de novo em até 3 peças para manter o combo.'), T('A cada 10 linhas você sobe de nível: os pontos são multiplicados.'),
+      list: [T('As peças não giram.'), T('Limpe de novo em até 3 peças para manter o combo.'), T('A cada 10 linhas você sobe de fase: os pontos são multiplicados.'),
         T('Jogadas especiais podem mudar o visual e os blocos. É surpresa!'), T('A partida acaba quando nenhuma das 3 peças couber.'), T('Você pode rever o tutorial em Ajuda.')],
       buttons: [
         { label: T('Começar a jogar'), cls: 'primary big', fn: function () { closeDialog(); startGame('classic'); } },
@@ -1817,8 +2187,60 @@
   $('#coach-skip').addEventListener('click', function () { Sound.tap(); finishTutorial(true); });
 
   /* ---------------- telas e navegação ---------------- */
+  /* v1.24 (polimento): dicas das novidades — um balão por vez, só na primeira vez (gb.tips) */
+  var TIPS = {
+    home: [['level', '#home-meta .lv-box', 'Este é o seu nível de jogador. Toda partida, missão e sequência de dias dá XP. No fim de semana vale o dobro!'],
+      ['streak', '#home-streak', '🔥 Sua sequência de dias. Jogue todo dia para aumentar; se pular um dia, o escudo da semana salva.'],
+      ['modes', '[data-go="modes"]', 'Novo modo: Desafio da Semana! Mesmas peças para todo mundo, e o placar da galera é conferido.']],
+    modes: [['weekly', '.weekly-card .mode-actions', 'Jogue, depois mande seu código para os amigos. Quem colar vê seus pontos conferidos ✅.']],
+    records: [['galera', '#body-records .mode-actions .btn.primary', 'Cole aqui o código que um amigo mandou. O jogo refaz a partida dele para conferir.']]
+  };
+  var tipEl = null, tipTimer = 0;
+  function hideTip() { if (tipEl) { tipEl.remove(); tipEl = null; } }
+  function tipsFor(name) {
+    clearTimeout(tipTimer); hideTip();
+    var list = TIPS[name]; if (!list) return;
+    if (/[?&]debug\b/.test(location.search) && !/[?&]tips\b/.test(location.search)) return; // testes automáticos: sem balões (a não ser com ?tips)
+    tipTimer = setTimeout(function () {
+      if (!screenIs(name) || overlayOpen()) return;
+      var seen = store.get('gb.tips', {}) || {};
+      for (var i = 0; i < list.length; i++) {
+        var t = list[i], target = document.querySelector(t[1]);
+        if (seen[t[0]] || !target || target.hidden || !target.offsetParent) continue;
+        showTip(t[0], target, T(t[2]), name); return;
+      }
+    }, 900);
+  }
+  function showTip(id, target, text, screen) {
+    hideTip();
+    var r = target.getBoundingClientRect(), b = el('div', 'tip-bubble');
+    b.setAttribute('role', 'status');
+    b.appendChild(el('p', '', text));
+    var ok = el('button', 'btn small primary', T('Entendi'));
+    ok.addEventListener('click', function () {
+      var seen = store.get('gb.tips', {}) || {}; seen[id] = 1; store.set('gb.tips', seen); hideTip(); Sound.tap(); tipsFor(screen);
+    });
+    b.appendChild(ok); document.body.appendChild(b); tipEl = b;
+    setTimeout(function () { // tocar em qualquer outro lugar também fecha (o balão nunca atrapalha o jogo)
+      document.addEventListener('pointerdown', function off(ev) {
+        if (tipEl !== b) { document.removeEventListener('pointerdown', off, true); return; }
+        if (b.contains(ev.target)) return;
+        document.removeEventListener('pointerdown', off, true);
+        var seen = store.get('gb.tips', {}) || {}; seen[id] = 1; store.set('gb.tips', seen); hideTip();
+      }, true);
+    }, 50);
+    var bw = b.offsetWidth, bh = b.offsetHeight, below = r.bottom + bh + 20 < window.innerHeight;
+    var left = Math.max(12, Math.min(window.innerWidth - bw - 12, r.left + r.width / 2 - bw / 2));
+    b.style.left = left + 'px';
+    b.style.top = (below ? r.bottom + 12 : r.top - bh - 12) + 'px';
+    b.classList.add(below ? 'down' : 'up');
+    b.style.setProperty('--ax', Math.max(18, Math.min(bw - 18, r.left + r.width / 2 - left)) + 'px');
+  }
   function show(name) {
     Object.keys(screens).forEach(function (k) { screens[k].classList.toggle('active', k === name); });
+    var evl = eventNow(); $('#event-layer').hidden = !evl || settings.anim === 'off'; document.body.classList.toggle('ev-terror', !!evl); // v1.24: lua e morcegos
+    if (name !== 'home' && $('#news-bar')) $('#news-bar').hidden = true; // v1.24: barra de novidades só na tela inicial
+    tipsFor(name);
     if (name === 'home') refreshHome();
     else if (!(history.state && history.state.gb)) { try { history.pushState({ gb: 1 }, ''); } catch (e) {} }
     if (window.GBMenus && window.GBMenus.onShow) window.GBMenus.onShow(name);
@@ -1841,6 +2263,15 @@
 
   function refreshHome() {
     $('#home-best').textContent = fmt(bestFor('classic'));
+    var hm = Season.medalFor(bestFor('classic')); $('#home-medal').textContent = hm ? hm.icon : ''; $('#home-medal').hidden = !hm;
+    var lv = Season.levelOf(stats.xp || 0), sk = Season.streakNow(stats, today());
+    $('#home-lv').textContent = T('Nível {n}', { n: lv.level }); $('#home-title').textContent = T(lv.title);
+    $('#home-xp').style.width = Math.round(100 * lv.cur / lv.need) + '%';
+    $('#home-streak').hidden = sk < 1; $('#home-streak-n').textContent = sk === 1 ? T('1 dia') : T('{n} dias', { n: sk });
+    $('#home-x2').hidden = !Season.isWeekend();
+    if (window.GBHome) window.GBHome.sync(); // v1.24: botões de modo
+    var evh = eventNow(); $('#event-banner').hidden = !evh;
+    if (evh) $('#event-title').textContent = evh.icon + ' ' + T(evh.name) + ' · ' + T('até domingo');
     $('.home-best').hidden = bestFor('classic') <= 0; // v1.23: sem "Recorde 0" para quem ainda não tem recorde
     var ng = $('#home-next') ? Progress.nextGoal(stats) : null; // v1.14: tela inicial simplificada (sem barra de próximo objetivo)
     if ($('#home-next')) $('#home-next').hidden = !ng;
@@ -2087,6 +2518,108 @@
     });
     return n ? out : null;
   }
+  /* v1.24: Placar da galera (sem servidor): mandar o código de prova e colar o código dos amigos */
+  function myWeeklyCode() { var wd = weeklyData(); return wd.best ? Weekly.encode(wd.week, nick() || T('Eu'), wd.best, wd.moves || '') : ''; }
+  function addMineToGalera() {
+    var wd = weeklyData(); if (!wd.best) return;
+    var g = galera(); g.list = g.list.filter(function (x) { return !x.me; });
+    g.list.push({ name: nick() || T('Você'), score: wd.best, me: true });
+    g.list.sort(function (a, b) { return b.score - a.score; }); store.set('gb.galera', g);
+  }
+  function addFriendToGalera(e) {
+    var g = galera(), key = e.name.toLowerCase(), old = g.list.filter(function (x) { return !x.me && x.name.toLowerCase() === key; })[0];
+    if (old && old.score >= e.score) return false;
+    g.list = g.list.filter(function (x) { return x.me || x.name.toLowerCase() !== key; });
+    g.list.push({ name: e.name, score: e.score, lines: e.lines || 0 });
+    g.list.sort(function (a, b) { return b.score - a.score; }); store.set('gb.galera', g);
+    return true;
+  }
+  function refreshRecords() { if (screenIs('records') && window.GBMenus) window.GBMenus.onShow('records'); }
+  function askNick(then) {
+    var card = $('#dialog-card'); card.innerHTML = '';
+    var h = el('h2', '', T('Seu apelido no placar')); h.id = 'dialog-title'; card.appendChild(h);
+    card.appendChild(el('p', 'muted', T('Aparece para os amigos que colarem o seu código. Até 16 letras. Fica só neste celular.')));
+    var inp = el('input'); inp.id = 'nick-input'; inp.type = 'text'; inp.maxLength = 16; inp.value = nick(); inp.placeholder = T('Ex.: Thesco'); inp.setAttribute('autocomplete', 'nickname'); inp.setAttribute('aria-label', T('Apelido')); card.appendChild(inp);
+    var st = el('div', 'stack'), ok = el('button', 'btn primary', T('Salvar')), no = el('button', 'btn', T('Cancelar'));
+    ok.addEventListener('click', function () {
+      var n = Weekly.cleanName(inp.value); if (!n) { inp.focus(); return; }
+      settings.nick = n; saveSettings(); closeDialog(); addMineToGalera(); refreshRecords(); if (then) then();
+    });
+    no.addEventListener('click', closeDialog);
+    st.appendChild(ok); st.appendChild(no); card.appendChild(st);
+    openOverlay('#ov-dialog'); setTimeout(function () { try { inp.focus(); } catch (e) {} }, 80);
+  }
+  function shareWeekly() {
+    if (!nick()) { askNick(shareWeekly); return; }
+    var wd = weeklyData();
+    if (!wd.best) { toast(T('Jogue o Desafio da Semana primeiro'), ''); return; }
+    var text = T('Fiz {n} pontos no Desafio da Semana do Kablox! Cole esta mensagem no jogo (Recordes → Placar da galera) para conferir e tentar me bater:', { n: fmt(wd.best) }) + '\n\n' + myWeeklyCode() + '\n\n' + SITE_URL;
+    var fallback = function () { showCodeDialog(text); };
+    if (navigator.share) { navigator.share({ text: text }).catch(function () {}); return; }
+    try { navigator.clipboard.writeText(text).then(function () { toast(T('Código copiado!'), T('Cole no WhatsApp para a galera. Eles colam no jogo para conferir.')); }, fallback); } catch (e) { fallback(); }
+  }
+  function openPasteFriend() {
+    var card = $('#dialog-card'); card.innerHTML = '';
+    var h = el('h2', '', T('Colar código de amigo')); h.id = 'dialog-title'; card.appendChild(h);
+    card.appendChild(el('p', 'muted', T('Cole a mensagem inteira que o amigo mandou. O jogo refaz a partida dele, jogada por jogada, para conferir os pontos.')));
+    var ta = el('textarea'); ta.id = 'friend-code'; ta.setAttribute('spellcheck', 'false'); ta.setAttribute('aria-label', T('Código do amigo')); card.appendChild(ta);
+    var msg = el('p', 'restore-msg'); msg.setAttribute('role', 'status'); card.appendChild(msg);
+    var st = el('div', 'stack'), ok = el('button', 'btn primary', T('Conferir')), no = el('button', 'btn', T('Fechar'));
+    ok.addEventListener('click', function () {
+      var raw = ta.value, at = raw.indexOf('KS1.'), v = { ok: false, error: 'format' };
+      if (at >= 0) { // o WhatsApp pode quebrar o código em linhas: junta até o fim do código (8 letras de verificação)
+        var tail = raw.slice(at).replace(/\s+/g, ''), mm = /^KS1\.w\d+\.[A-Za-z0-9_-]+\.\d+\.[A-Za-z0-9_-]*\.[0-9a-f]{8}/.exec(tail);
+        v = mm ? Weekly.verify(mm[0]) : v;
+      }
+      if (!v.ok) { msg.className = 'restore-msg bad'; msg.textContent = v.error === 'format' || v.error === 'big' ? T('Não achei um código do Desafio da Semana nessa mensagem.') : T('Esse código não confere: os pontos não batem com as jogadas.'); return; }
+      if (v.week !== weekNow()) { msg.className = 'restore-msg bad'; msg.textContent = T('Esse código é de outra semana.'); return; }
+      var added = addFriendToGalera(v);
+      msg.className = 'restore-msg good';
+      msg.textContent = '✅ ' + T('{name}: {n} pontos conferidos!', { name: v.name, n: fmt(v.score) }) + (added ? '' : ' ' + T('(já estava no placar)'));
+      ta.value = ''; Sound.tap(); refreshRecords();
+    });
+    no.addEventListener('click', closeDialog);
+    st.appendChild(ok); st.appendChild(no); card.appendChild(st);
+    openOverlay('#ov-dialog'); setTimeout(function () { try { ta.focus(); } catch (e) {} }, 80);
+  }
+  /* v1.24 (polimento, pedido do dono): "Achei um bug" — monta a mensagem com a versão e o aparelho, copia e abre o Direct.
+     Nada é enviado sozinho: a pessoa vê o texto e decide mandar. */
+  var BUG_DM = 'https://ig.me/m/othesco.br';
+  function bugInfo() {
+    var ua = navigator.userAgent || '', dev = /iPhone|iPad|iPod/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : T('computador/outro');
+    var inst = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+    var where = screenIs('game') ? T('na partida') + ' (' + modeOf() + ')' : T('nos menus');
+    return 'Kablox v' + VERSION + ' · ' + dev + (inst ? ' (' + T('instalado') + ')' : '') + ' · ' + window.innerWidth + '×' + window.innerHeight + ' · ' + where + ' · ' + T('efeitos') + ' ' + ({ full: T('Completos'), light: T('Leves'), min: T('Mínimos') }[presetOf()] || T('personalizados'));
+  }
+  function openBugReport() {
+    var card = $('#dialog-card'); card.innerHTML = '';
+    var h = el('h2', '', '🐞 ' + T('Achei um bug')); h.id = 'dialog-title'; card.appendChild(h);
+    card.appendChild(el('p', 'muted', T('Conte o que aconteceu e o que você estava fazendo. O jogo junta a versão e o tipo de celular para ajudar a achar o problema.')));
+    var ta = el('textarea'); ta.id = 'bug-text'; ta.setAttribute('aria-label', T('O que aconteceu?')); ta.placeholder = T('Ex.: arrastei a peça e ela sumiu'); card.appendChild(ta);
+    var info = bugInfo(), pv = el('p', 'bug-info', info); card.appendChild(pv);
+    var msg = el('p', 'restore-msg'); msg.setAttribute('role', 'status'); card.appendChild(msg);
+    var st = el('div', 'stack'), ok = el('button', 'btn primary', T('Copiar e abrir o Direct')), no = el('button', 'btn', T('Cancelar'));
+    ok.addEventListener('click', function () {
+      var t = ta.value.trim(); if (!t) { msg.className = 'restore-msg bad'; msg.textContent = T('Escreva o que aconteceu.'); ta.focus(); return; }
+      var text = '🐞 Bug no Kablox\n' + t + '\n— ' + info;
+      var go = function () { msg.className = 'restore-msg good'; msg.textContent = T('Mensagem copiada! Cole no Direct e envie.'); try { window.open(BUG_DM, '_blank', 'noopener'); } catch (e) {} };
+      try { navigator.clipboard.writeText(text).then(go, function () { showCodeDialog(text); }); } catch (e) { showCodeDialog(text); }
+    });
+    no.addEventListener('click', closeDialog);
+    st.appendChild(ok); st.appendChild(no); card.appendChild(st);
+    openOverlay('#ov-dialog'); setTimeout(function () { try { ta.focus(); } catch (e) {} }, 80);
+  }
+  $('#btn-event').addEventListener('click', function () { Sound.tap(); openEvent(); });
+  function openEvent() { // v1.24: Desafio do evento (Semana do Terror)
+    var ev = eventNow(); if (!ev) return;
+    showDialog({ title: ev.icon + ' ' + T(ev.name), list: [
+      T('Limpe {n} abóboras 🎃 numa partida só.', { n: ev.goal }), T('As abóboras aparecem bem mais neste desafio.'),
+      stats.rares && stats.rares.pk ? T('Você já ganhou a Abóbora! Jogue de novo por diversão.') : T('Prêmio: a Abóbora vira um bloco raro seu para sempre.'), T('O evento acaba domingo, 8/11.')],
+      buttons: [{ label: T('Jogar'), cls: 'primary big', fn: function () { closeDialog(); confirmReplace('event', function () { startGame('event'); }, function () { startGame('event', { resume: true }); }); } },
+        { label: T('Agora não'), cls: 'ghost-dark', fn: closeDialog }] });
+  }
+  $('#btn-bug').addEventListener('click', function () { Sound.tap(); openBugReport(); });
+  $('#btn-bug-pause').addEventListener('click', function () { Sound.tap(); closeOverlay('#ov-pause'); openBugReport(); });
   function openRestore() {
     var card = $('#dialog-card'); card.innerHTML = '';
     var h = el('h2', '', T('Restaurar progresso')); h.id = 'dialog-title'; card.appendChild(h);
@@ -2212,13 +2745,20 @@
     store.set('gb.newsSeen', VERSION);
     if (!fresh.length) return;
     setTimeout(function () {
-      var bar = $('#news-bar'); if (!bar || !screens.home.classList.contains('active')) return;
+      var bar = $('#news-bar'); if (!bar || !screens.home.classList.contains('active') || seasonNews || overlayOpen()) return; // v1.24: o aviso da temporada já fala das novidades
       bar.hidden = false;
       $('#btn-news-show').onclick = function () { bar.hidden = true; Sound.tap(); newsDialog(fresh); };
       $('#btn-news-later').onclick = function () { bar.hidden = true; };
       setTimeout(function () { bar.hidden = true; }, 15000); // some sozinho; a lista fica em Ajuda → Novidades
     }, 1200);
   })();
+  if (seasonNews) setTimeout(function () { // v1.24: aviso único da Temporada 1
+    showDialog({ title: T('🏆 Começou a Temporada 1!'), list: [
+      T('Os recordes começam do zero para todo mundo competir de igual para igual.'),
+      seasonNews.legend > 0 ? T('Seu recorde antigo ({n}) fica guardado como Recorde lendário.', { n: fmt(seasonNews.legend) }) : T('Seus estilos, conquistas e estrelas continuam.'),
+      T('Novidades: medalhas de recorde, nível do jogador e sequência de dias 🔥.')],
+      buttons: [{ label: T('Bora!'), cls: 'primary', fn: closeDialog }] });
+  }, 900);
   try { if (localStorage.getItem('gb.restored')) { localStorage.removeItem('gb.restored'); setTimeout(function () { toast(T('Progresso restaurado!'), T('Seus recordes e conquistas estão de volta.')); }, 600); } } catch (e) {}
   applySettings();
   Sound.setTheme(THEMES[0]);
@@ -2232,6 +2772,8 @@
     startGame: startGame, startTutorial: startTutorial, hasSave: hasSave, bestFor: bestFor, challengeDef: challengeDef,
     confirmReplace: confirmReplace, openChallengeIntro: openChallengeIntro, showDialog: showDialog, closeDialog: closeDialog,
     show: show, goHome: goHome, openSettings: function () { settingsReturn = null; openOverlay('#ov-settings'); },
+    eventNow: eventNow, openEvent: openEvent, saveSettings: saveSettings,
+    galera: galera, weeklyData: weeklyData, shareWeekly: shareWeekly, openPasteFriend: openPasteFriend, askNick: askNick, nick: nick,
     drawSkinPreview: drawSkinPreview, setSkin: setSkin, resetAll: resetAll, records: records, multText: multText,
     tutorialDone: function () { return !!store.get('gb.tutorialDone', false); }
   };

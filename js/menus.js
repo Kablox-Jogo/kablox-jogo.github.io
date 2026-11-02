@@ -18,11 +18,31 @@
   }
 
   /* ---------------- tela inicial ---------------- */
-  function playClassic() {
+  function playClassic() { playMode('classic'); }
+  /* v1.24 (dono: "quem quer Zen cai sempre no Clássico"): botões de modo embaixo do JOGAR; o jogo lembra o último escolhido */
+  function homeMode() { var m = G.settings.homeMode; if (m === 'event' && !G.eventNow()) m = 'classic'; return ['classic', 'zen', 'weekly', 'event'].indexOf(m) >= 0 ? m : 'classic'; }
+  function playMode(m) {
     if (!G.tutorialDone()) { G.startTutorial('play'); return; }
-    G.confirmReplace('classic', function () { G.startGame('classic'); }, function () { G.startGame('classic', { resume: true }); });
+    if (m === 'event') { G.openEvent(); return; }
+    var saved = G.hasSave(m);
+    if (saved && m !== 'classic') { G.startGame(m, { resume: true }); return; } // Zen/Semana: continua direto
+    G.confirmReplace(m, function () { G.startGame(m); }, function () { G.startGame(m, { resume: true }); });
   }
-  $('#btn-play').addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); playClassic(); });
+  function syncModePick() {
+    var m = homeMode(), names = { classic: T('Clássico'), zen: T('Zen'), weekly: T('Desafio da Semana'), event: T('Desafio do evento') };
+    Array.prototype.forEach.call(document.querySelectorAll('#mode-pick [data-mode]'), function (b) {
+      var id = b.getAttribute('data-mode');
+      if (id === 'event') b.hidden = true; // o evento já tem o banner próprio
+      b.setAttribute('aria-checked', String(id === m)); b.classList.toggle('on', id === m);
+    });
+    $('#play-mode').textContent = G.hasSave(m) && m !== 'event' ? T('Continuar · {m}', { m: names[m] }) : names[m];
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#mode-pick [data-mode]'), function (b) {
+    b.addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); G.settings.homeMode = b.getAttribute('data-mode'); G.saveSettings(); syncModePick(); });
+  });
+  window.GBHome = { sync: syncModePick };
+  syncModePick();
+  $('#btn-play').addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); playMode(homeMode()); });
   if ($('#home-next')) $('#home-next').addEventListener('click', function () { G.sound.tap(); var g = P.nextGoal(G.stats); G.show(g && g.kind === 'achievement' ? 'stats' : 'collection'); });
   Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function (b) {
     b.addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); G.show(b.getAttribute('data-go')); });
@@ -32,26 +52,40 @@
   });
 
   /* ---------------- modos ---------------- */
-  function renderModes() {
+  function renderModes() { // v1.24 (dono): cartões coloridos, menos texto (regras no "?"), recorde e progresso à vista
     var body = $('#body-modes'); body.innerHTML = '';
-    ['classic', 'zen', 'challenge'].forEach(function (id) {
-      var m = P.MODES[id], card = h('article', 'mode-card');
-      var head = h('div', 'mode-head');
-      head.innerHTML = icon('i-' + m.icon, 26);
-      var tw = h('div'); tw.appendChild(h('h3', '', T(m.name))); tw.appendChild(h('p', 'm-note', T(m.desc))); head.appendChild(tw);
+    var list = [
+      { id: 'classic', icon: 'i-crown', name: T('Clássico'), line: T('Partida livre. Faça o máximo de pontos.'), rules: P.MODES.classic.rules.map(T),
+        info: G.bestFor('classic') > 0 ? T('Recorde: {n}', { n: fmt(G.bestFor('classic')) }) : T('Sem recorde ainda') },
+      { id: 'zen', icon: 'i-leaf', name: T('Zen'), line: T('Sem fim de partida. Jogue no seu ritmo.'), rules: P.MODES.zen.rules.map(T),
+        info: G.bestFor('zen') > 0 ? T('Recorde: {n}', { n: fmt(G.bestFor('zen')) }) : T('Sem recorde ainda') },
+      { id: 'weekly', icon: 'i-trophy', name: T('Desafio da Semana'), line: T('Mesmas peças para todos até domingo.'),
+        rules: [T('Regras do Clássico, sem desfazer e sem reviver.'), T('No fim, o jogo cria um código com todas as suas jogadas.'), T('Quem cola o código vê os pontos conferidos ✅ no Placar da galera.')],
+        info: G.bestFor('weekly') > 0 ? T('Seu melhor da semana: {n}', { n: fmt(G.bestFor('weekly')) }) + ' · ' + T('{n} na galera', { n: G.galera().list.length }) : T('Ainda não jogou esta semana') },
+      { id: 'challenge', icon: 'i-flag', name: T('Desafios'), line: T('Fases com objetivo e estrelas.'), rules: P.MODES.challenge.rules.map(T),
+        info: T('{a} de {b} desafios concluídos · {s} estrelas', { a: P.doneChallenges(G.stats), b: P.CHALLENGES.length, s: P.stars(G.stats) }) }
+    ];
+    if (G.eventNow()) list.unshift({ id: 'event', emoji: '🎃', name: T('Semana do Terror'), line: T('Limpe {n} abóboras 🎃 numa partida só.', { n: G.eventNow().goal }),
+      rules: [T('As abóboras aparecem bem mais neste desafio.'), T('Prêmio: a Abóbora vira um bloco raro seu para sempre.'), T('O evento acaba domingo, 8/11.')],
+      info: G.stats.rares && G.stats.rares.pk ? T('Você já ganhou a Abóbora! Jogue de novo por diversão.') : T('Prêmio ainda não conquistado') });
+    list.forEach(function (m) {
+      var card = h('article', 'mode-card mc-' + m.id), head = h('div', 'mode-head');
+      if (m.emoji) head.appendChild(h('span', 'mode-emoji', m.emoji)); else head.innerHTML = icon(m.icon, 34);
+      var tw = h('div'); tw.appendChild(h('h3', '', m.name)); tw.appendChild(h('p', 'm-note', m.line)); head.appendChild(tw);
       card.appendChild(head);
-      var ul = h('ul', 'rules'); m.rules.forEach(function (r) { ul.appendChild(h('li', '', T(r))); }); card.appendChild(ul);
+      card.appendChild(h('p', 'mode-best', m.info));
+      var det = h('details', 'mode-rules'), sm = h('summary', '', T('Regras')); det.appendChild(sm);
+      var ul = h('ul', 'rules'); m.rules.forEach(function (r) { ul.appendChild(h('li', '', r)); }); det.appendChild(ul); card.appendChild(det);
       var row = h('div', 'mode-actions');
-      if (id === 'challenge') {
-        card.appendChild(h('p', 'mode-best', T('{a} de {b} desafios concluídos · {s} estrelas', { a: P.doneChallenges(G.stats), b: P.CHALLENGES.length, s: P.stars(G.stats) })));
-        row.appendChild(btn(T('Ver desafios'), 'primary', function () { G.show('challenges'); }));
-      } else {
-        card.appendChild(h('p', 'mode-best', T('Recorde {mode}: {n}', { mode: T(m.name), n: fmt(G.bestFor(id)) })));
-        if (G.hasSave(id)) row.appendChild(btn(T('Continuar'), 'primary', function () { G.startGame(id, { resume: true }); }));
-        row.appendChild(btn(G.hasSave(id) ? T('Nova partida') : T('Jogar'), G.hasSave(id) ? '' : 'primary', function () {
-          if (id === 'classic' && !G.tutorialDone()) { G.startTutorial('play'); return; }
-          G.confirmReplace(id, function () { G.startGame(id); }, function () { G.startGame(id, { resume: true }); });
+      if (m.id === 'challenge') row.appendChild(btn(T('Ver desafios'), 'primary', function () { G.show('challenges'); }));
+      else if (m.id === 'event') row.appendChild(btn(T('Jogar'), 'primary', function () { G.openEvent(); }));
+      else {
+        if (G.hasSave(m.id)) row.appendChild(btn(T('Continuar'), 'primary', function () { G.startGame(m.id, { resume: true }); }));
+        row.appendChild(btn(G.hasSave(m.id) ? T('Nova partida') : T('Jogar'), G.hasSave(m.id) ? '' : 'primary', function () {
+          if (m.id === 'classic' && !G.tutorialDone()) { G.startTutorial('play'); return; }
+          G.confirmReplace(m.id, function () { G.startGame(m.id); }, function () { G.startGame(m.id, { resume: true }); });
         }));
+        if (m.id === 'weekly') row.appendChild(btn(T('Placar da galera'), '', function () { G.show('records'); }));
       }
       card.appendChild(row);
       body.appendChild(card);
@@ -212,15 +246,40 @@
   /* ---------------- recordes ---------------- */
   function renderRecords() {
     var body = $('#body-records'), st = G.stats, day = G.today(); body.innerHTML = '';
-    var sec = section(T('Recorde por modo'));
+    var SN = window.MZSeason, lv = SN.levelOf(st.xp || 0), sk = st.streak || {};
+    var sec = section(T('Temporada {n}', { n: SN.SEASON }));
     var g = h('div', 'stat-grid');
     [[fmt(st.best.classic), T('Recorde Clássico')], [fmt(st.best.zen), T('Recorde Zen')],
       [st.daily.day === day && st.daily.played ? fmt(st.daily.best) : '—', T('Melhor do dia de hoje')],
       [P.doneChallenges(st) + '/' + P.CHALLENGES.length, T('Desafios concluídos')], [fmt(P.stars(st)), T('Estrelas')],
-      [st.bestCombo ? '×' + st.bestCombo : '—', T('Maior combo')]
-    ].forEach(function (it) { var d = h('div'); d.appendChild(h('strong', '', it[0])); d.appendChild(h('span', '', it[1])); g.appendChild(d); });
+      [st.bestCombo ? '×' + st.bestCombo : '—', T('Maior combo')],
+      [T('Nível {n}', { n: lv.level }), T(lv.title)], [(sk.best || 0) + ' 🔥', T('Maior sequência de dias')]
+    ].concat(st.legend && st.legend.classic > 0 ? [[fmt(st.legend.classic), T('Recorde lendário (antes da Temporada 1)')]] : []).forEach(function (it) { var d = h('div'); d.appendChild(h('strong', '', it[0])); d.appendChild(h('span', '', it[1])); g.appendChild(d); });
     sec.appendChild(g);
     body.appendChild(sec);
+
+    // v1.24: Placar da galera do Desafio da Semana
+    var gal = section(T('Placar da galera · Desafio da Semana'), T('Só entram pontos conferidos: o jogo refaz a partida de cada código colado.'));
+    var gl = G.galera().list;
+    if (!gl.length) gal.appendChild(h('p', 'mode-best', T('Ninguém ainda nesta semana. Jogue o Desafio da Semana e mande seu código para a galera.')));
+    else {
+      var gol = h('ol', 'rec-list galera');
+      gl.forEach(function (e, i) {
+        var li = h('li', (i === 0 ? 'first' : '') + (e.me ? ' me' : ''));
+        li.appendChild(h('span', 'rec-pos', i === 0 ? '👑' : String(i + 1)));
+        var tx = h('span', 'ch-text'); var md = SN.medalFor(e.score);
+        tx.appendChild(h('strong', '', e.name + (e.me ? ' (' + T('você') + ')' : ' ✅')));
+        tx.appendChild(h('small', '', fmt(e.score) + ' ' + T('pontos') + (md ? ' ' + md.icon : '')));
+        li.appendChild(tx); gol.appendChild(li);
+      });
+      gal.appendChild(gol);
+    }
+    var ga = h('div', 'mode-actions');
+    ga.appendChild(btn(T('Colar código de amigo'), 'primary', function () { G.openPasteFriend(); }));
+    if (G.bestFor('weekly') > 0) ga.appendChild(btn(T('Mandar meu código'), '', function () { G.shareWeekly(); }));
+    ga.appendChild(btn(G.nick() ? T('Apelido: {n}', { n: G.nick() }) : T('Escolher apelido'), '', function () { G.askNick(); }));
+    gal.appendChild(ga);
+    body.appendChild(gal);
 
     var top = section(T('Melhores partidas'), T('As 10 maiores pontuações deste aparelho (Clássico e Desafio do dia).'));
     var list = G.records();
@@ -231,7 +290,8 @@
         var li = h('li', i === 0 ? 'first' : '');
         li.appendChild(h('span', 'rec-pos', String(i + 1)));
         var tx = h('span', 'ch-text');
-        tx.appendChild(h('strong', '', fmt(r.score)));
+        var md = SN.medalFor(r.score);
+        tx.appendChild(h('strong', '', fmt(r.score) + (md ? ' ' + md.icon : '')));
         var when = '';
         try { var p = String(r.day).split('-'); when = new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString(window.MZI18n.locale(), { day: 'numeric', month: 'short' }); } catch (e) {}
         tx.appendChild(h('small', '', T(r.mode === 'daily' ? 'Desafio do dia' : 'Clássico') + ' · ' + T('{n} linhas', { n: fmt(r.lines || 0) }) + (when ? ' · ' + when : '')));
@@ -271,7 +331,7 @@
       T('Cada bloco colocado: {n} pontos.', { n: sc.perBlock }),
       T('Linhas: {k} × (linhas)² — 1 linha = {a}, 2 = {b}, 3 = {c}.', { k: fmt(sc.perLineSquared), a: fmt(sc.perLineSquared), b: fmt(sc.perLineSquared * 4), c: fmt(sc.perLineSquared * 9) }),
       T('Combo: limpe de novo em até 3 peças. Cada nível de combo soma +{p}% nos pontos das linhas. As bolinhas ao lado do tema mostram quantas peças restam.', { p: Math.round(sc.comboBonus * 100) }),
-      T('Nível: a cada {k} linhas limpas você sobe de nível e TODOS os pontos são multiplicados (Nv 2 ×{a}, Nv 5 ×{b}, Nv 10 ×{c}, Nv 15 ×{d}). Partidas longas valem muito mais!',
+      T('Fase: a cada {k} linhas limpas você sobe de fase e TODOS os pontos são multiplicados (Fase 2 ×{a}, Fase 5 ×{b}, Fase 10 ×{c}, Fase 15 ×{d}). Partidas longas valem muito mais!',
         { k: sc.levelEvery, a: G.multText(2), b: G.multText(5), c: G.multText(10), d: G.multText(15) }),
       T('Tabuleiro vazio: +{n} × multiplicador.', { n: fmt(sc.boardClear) }),
       T('O visual da tela (8 estilos) muda sozinho em jogadas especiais; só a aparência muda.')

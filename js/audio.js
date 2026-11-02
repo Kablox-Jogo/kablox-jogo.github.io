@@ -188,10 +188,13 @@
     },
 
     /** Combo: duas notas subindo, mais agudas a cada nível. */
-    combo: function (n) {
-      var r = theme.root + 19 + Math.min(n, 8);
+    combo: function (n) { // v1.24 (dono): sobe um degrau da escala a cada combo — dá vontade de continuar
+      var sc = theme.scale, k = Math.min(Math.max(n, 2), 14) - 2, deg = sc[k % sc.length] + 12 * Math.floor(k / sc.length);
+      var r = theme.root + 12 + deg;
       this._tone(midi(r), { dur: 0.12, vol: 0.06, type: 'triangle', delay: 0.12 });
-      this._tone(midi(r + 7), { dur: 0.2, vol: 0.06, type: 'triangle', delay: 0.2 });
+      this._tone(midi(r + 7), { dur: 0.16, vol: 0.055, type: 'triangle', delay: 0.19 });
+      this._tone(midi(r + 12), { dur: 0.22, vol: 0.05, type: 'sine', delay: 0.26 });
+      if (n >= 5) this._noise({ filter: 'highpass', freq: 6500, dur: 0.3, vol: 0.03, attack: 0.05, delay: 0.24 });
     },
     /** Pontuação alta numa jogada: brilho curto. */
     bigScore: function () {
@@ -216,11 +219,12 @@
       this._tone(1480, { to: 1720, dur: 0.035, vol: 0.06, type: 'triangle' });
       this._noise({ filter: 'highpass', freq: 4200, dur: 0.018, vol: 0.05 });
     },
-    place: function () {
-      this._tone(545, { to: 465, dur: 0.055, vol: 0.17, type: 'sine' });
-      this._tone(1090, { to: 930, dur: 0.028, vol: 0.04, type: 'triangle' });
-      this._tone(175, { to: 140, dur: 0.05, vol: 0.06, type: 'sine' });
-      this._noise({ filter: 'bandpass', freq: 2300, q: 1.4, dur: 0.022, vol: 0.13 });
+    place: function () { // v1.24 (dono: "som de encaixar fraco"): clique mais firme + "tum" grave curto
+      this._tone(545, { to: 440, dur: 0.06, vol: 0.15, type: 'sine' });
+      this._tone(1090, { to: 900, dur: 0.03, vol: 0.05, type: 'triangle' });
+      this._tone(160, { to: 95, dur: 0.08, vol: 0.1, type: 'sine' });
+      this._noise({ filter: 'bandpass', freq: 2600, q: 1.6, dur: 0.018, vol: 0.15 });
+      this._noise({ filter: 'lowpass', freq: 700, dur: 0.05, vol: 0.08 });
     },
     /** v1.21: Estrela acionada — sininho brilhante subindo. */
     star: function () {
@@ -232,6 +236,16 @@
       this._noise({ filter: 'lowpass', freq: 1400, toFreq: 140, dur: 0.55, vol: 0.16 });
       this._tone(120, { to: 38, dur: 0.5, vol: 0.12, type: 'sine' });
       for (var i = 0; i < 4; i++) this._noise({ filter: 'bandpass', freq: 1500 + Math.random() * 1500, q: 3, dur: 0.035, vol: 0.08, delay: 0.08 + i * 0.06 + Math.random() * 0.03 });
+    },
+    /** v1.24 (Semana do Terror): fantasma — "uuuu" com vibrato descendo (leve). */
+    ghost: function () {
+      this._tone(620, { to: 380, dur: 0.9, vol: 0.05, type: 'sine', attack: 0.15 });
+      this._tone(627, { to: 386, dur: 0.9, vol: 0.035, type: 'sine', attack: 0.2, delay: 0.02 });
+    },
+    /** v1.24 (Semana do Terror): uivo curto no fim da partida. */
+    howl: function () {
+      this._tone(330, { to: 560, dur: 0.45, vol: 0.05, type: 'sine', attack: 0.12 });
+      this._tone(560, { to: 300, dur: 0.8, vol: 0.05, type: 'sine', delay: 0.42 });
     },
     invalid: function () { this._tone(170, { to: 120, dur: 0.16, vol: 0.12, type: 'triangle' }); },
     /** Linha limpa (v1.23, menos poluição sonora): 1 som principal (escala subindo) + no máximo 1 detalhe.
@@ -319,12 +333,16 @@
   /** Agenda uma semicolcheia n (0..) da música no instante t. */
   function musicStep(c, bus, n, t, th) {
     var bar = Math.floor(n / 16), s16 = n % 16, phrase = bar % 12, brk = phrase >= 8; // 8 compassos cheios + 4 de pausa
-    var prog = progression(th.scale), ch = prog[bar % 4], rootN = th.root - 12 + ch[0];
+    // v1.24 (dono: "a música cansa"): a cada 24 compassos (~55 s) muda de tom, de batida e de arpejo
+    var cyc = Math.floor(bar / 24), tr = [0, 2, -3, 5][cyc % 4], beat = cyc % 3;
+    var prog = progression(th.scale), ch = prog[bar % 4], rootN = th.root - 12 + ch[0] + tr;
     var third = ch[1] === 'm' ? 3 : 4, chord = [rootN, rootN + third, rootN + 7, rootN + 12];
-    var arp = ARPS[Math.floor(bar / 4) % ARPS.length];
+    var arp = ARPS[(Math.floor(bar / 4) + cyc) % ARPS.length];
     if (!brk) {
-      if (s16 === 0 || s16 === 8 || (s16 === 10 && bar % 2)) kick(c, bus, t, 0.22);
-      if (s16 === 4 || s16 === 12) noiseHit(c, bus, t, 0.07, 'bandpass', 1500, 0.12);
+      if (beat === 0 && (s16 === 0 || s16 === 8 || (s16 === 10 && bar % 2))) kick(c, bus, t, 0.22);
+      if (beat === 1 && (s16 === 0 || (s16 === 7 && bar % 2))) kick(c, bus, t, 0.22); // meia batida
+      if (beat === 2 && s16 % 4 === 0) kick(c, bus, t, 0.18); // 4 por compasso
+      if (beat === 1 ? s16 === 8 : (s16 === 4 || s16 === 12)) noiseHit(c, bus, t, 0.07, 'bandpass', 1500, 0.12);
     }
     if (s16 % 2 === 0) noiseHit(c, bus, t, s16 % 4 === 2 ? 0.035 : 0.018, 'highpass', 7000, 0.04); // chimbal
     if (s16 % 2 === 0 && !(brk && s16 % 4)) { // baixo em colcheias (na pausa, só nos tempos)
@@ -337,8 +355,8 @@
       if (!brk || s16 % 4 === 0) tone(c, bus, 'square', midi(m2), t, S16 * 1.6, brk ? 0.012 : 0.02, 0.004, 2600);
     }
     if (!brk && bar % 2 === 1 && (s16 === 3 || s16 === 11) ) { // respostas curtas da melodia
-      var deg = th.scale[(bar + s16) % th.scale.length];
-      tone(c, bus, 'triangle', midi(th.root + 12 + deg), t, S16 * 3, 0.03, 0.01);
+      var deg = th.scale[(bar + s16 + cyc) % th.scale.length];
+      tone(c, bus, 'triangle', midi(th.root + 12 + deg + tr), t, S16 * 3, 0.03, 0.01);
     }
   }
   function scheduleMusic() {

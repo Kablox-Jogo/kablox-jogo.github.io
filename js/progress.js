@@ -256,7 +256,8 @@
     return { v: 1, games: 0, placed: 0, lines: 0, clears: 0, bestCombo: 0, bestMulti: 0, bestGame: 0, timeMs: 0,
       best: { classic: 0, zen: 0 }, gamesByMode: { classic: 0, zen: 0, challenge: 0, daily: 0 },
       themesSeen: { jardim: 1 }, challenges: {}, daily: { day: '', best: 0, played: 0 },
-      missionsDay: '', missions: [], missionsDone: 0, missionStars: 0, achievements: {}, surpriseSeen: {}, chapterRewards: {}, surprises: 0, scale: 2 }; // scale 2 = pontuação com níveis (v1.11+)
+      missionsDay: '', missions: [], missionsDone: 0, missionStars: 0, achievements: {}, surpriseSeen: {}, chapterRewards: {}, surprises: 0, scale: 2,
+      season: 0, legend: { classic: 0, daily: 0 }, xp: 0, streak: { days: 0, last: '', best: 0, shields: 1, shieldWeek: '' }, rares: {}, chestDay: '' }; // v1.24: js/season.js // scale 2 = pontuação com níveis (v1.11+)
   }
 
   /** Aceita só valores com o mesmo tipo do modelo (dados corrompidos voltam ao padrão). */

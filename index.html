@@ -23,6 +23,7 @@
 <body class="anim-full">
   <div class="bg-layer" id="bg-a"></div>
   <div class="bg-layer" id="bg-b"></div>
+  <div id="event-layer" aria-hidden="true" hidden><i class="moon"></i><i class="bat b1">🦇</i><i class="bat b2">🦇</i><i class="bat b3">🦇</i></div>
 
   <svg width="0" height="0" class="svg-defs" aria-hidden="true">
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2" fill="currentColor"/><rect x="13" y="3.5" width="7.5" height="7.5" rx="2" fill="currentColor" opacity=".6"/><rect x="3.5" y="13" width="7.5" height="7.5" rx="2" fill="currentColor" opacity=".6"/><rect x="13" y="13" width="7.5" height="7.5" rx="2" fill="currentColor"/></symbol>
@@ -100,8 +101,20 @@
         <svg class="emblem" viewBox="0 0 200 200" aria-hidden="true"><use href="#logo-emblem"/></svg>
         <h1 id="title" class="wordmark" aria-label="Kablox"><span aria-hidden="true">KABLO<b class="x">X</b></span></h1>
         <p class="tagline" data-i18n>Encaixe. Exploda. Repita.</p>
-        <button class="home-best" data-go="records"><svg width="20" height="20" aria-hidden="true"><use href="#i-crown"/></svg> <span data-i18n>Recorde</span> <strong id="home-best">0</strong><svg class="chev" width="14" height="14" aria-hidden="true"><use href="#i-back"/></svg><span class="sr-only" data-i18n>Recordes</span></button>
-        <button id="btn-play" class="bk bk-yellow bk-big play-btn"><svg width="30" height="30" aria-hidden="true"><use href="#i-play"/></svg><span data-i18n>Jogar</span></button>
+        <button class="home-best" data-go="records"><svg width="20" height="20" aria-hidden="true"><use href="#i-crown"/></svg> <span data-i18n>Recorde</span> <strong id="home-best">0</strong><span id="home-medal" class="home-medal" hidden></span><svg class="chev" width="14" height="14" aria-hidden="true"><use href="#i-back"/></svg><span class="sr-only" data-i18n>Recordes</span></button>
+        <div class="home-meta" id="home-meta">
+          <div class="lv-box"><span class="lv-n" id="home-lv">Nível 1</span><span class="lv-t" id="home-title">Iniciante</span><span class="lv-bar"><i id="home-xp"></i></span></div>
+          <span class="streak" id="home-streak" hidden>🔥 <b id="home-streak-n">0</b></span>
+          <span class="x2" id="home-x2" hidden data-i18n>XP ×2</span>
+        </div>
+        <div class="event-banner" id="event-banner" hidden><span id="event-title">🎃 Semana do Terror</span><button class="btn small primary" id="btn-event" data-i18n>Desafio do evento</button></div>
+        <button id="btn-play" class="bk bk-yellow bk-big play-btn"><svg width="30" height="30" aria-hidden="true"><use href="#i-play"/></svg><span data-i18n>Jogar</span><small id="play-mode"></small></button>
+        <div class="mode-pick" id="mode-pick" role="radiogroup" aria-label="Modo de jogo" data-i18n-aria>
+          <button data-mode="classic" role="radio" aria-checked="true"><svg aria-hidden="true"><use href="#i-crown"/></svg><span data-i18n>Clássico</span></button>
+          <button data-mode="zen" role="radio" aria-checked="false"><svg aria-hidden="true"><use href="#i-leaf"/></svg><span data-i18n>Zen</span></button>
+          <button data-mode="weekly" role="radio" aria-checked="false"><svg aria-hidden="true"><use href="#i-trophy"/></svg><span data-i18n>Semana</span></button>
+          <button data-mode="event" role="radio" aria-checked="false" hidden><span aria-hidden="true">🎃</span><span data-i18n>Evento</span></button>
+        </div>
         <nav class="home-grid" aria-label="Menu principal" data-i18n-aria>
           <button class="bk bk-blue tile" data-go="modes"><svg aria-hidden="true"><use href="#i-grid"/></svg><span data-i18n>Modos</span></button>
           <button class="bk bk-green tile" data-go="challenges"><svg aria-hidden="true"><use href="#i-flag"/></svg><span data-i18n>Desafios</span><em class="tile-badge" id="badge-missions" aria-hidden="true" hidden></em></button>
@@ -196,6 +209,7 @@
         <button class="btn primary" data-action="resume" data-i18n>Continuar</button>
         <button class="btn" id="btn-restart" data-i18n>Recomeçar</button>
         <button class="btn" data-action="settings" data-i18n>Configurações</button>
+        <button class="btn" id="btn-bug-pause" data-i18n>🐞 Achei um bug</button>
         <button class="btn ghost-dark" data-action="home">Sair (a partida fica salva)</button>
       </div>
     </div>
@@ -277,6 +291,7 @@
         </div>
       </div>
       <a class="btn feedback-link" href="opiniao.html" data-i18n>💬 Dar opinião sobre o jogo</a>
+      <button class="btn feedback-link" id="btn-bug" data-i18n>🐞 Achei um bug</button>
       <h3 class="set-sec" data-i18n>🌐 Idioma</h3>
       <div class="row col">
         <span id="lang-label" class="sr-only" data-i18n>Idioma</span>
@@ -306,6 +321,9 @@
   <script src="js/fx.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/progress.js"></script>
+  <script src="js/season.js"></script>
+  <script src="js/weekly.js"></script>
+  <script src="js/events.js"></script>
   <script src="js/backup.js"></script>
   <script src="js/news.js"></script>
   <script src="js/ui.js"></script>
