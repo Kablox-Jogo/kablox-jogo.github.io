@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.22.0';
+  var VERSION = '1.22.1';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   var INLINE = !!window.MZ_INLINE; // versão de prévia em arquivo único (sem service worker)
@@ -118,10 +118,13 @@
     c = document.createElement('canvas');
     c.width = c.height = px;
     var ctx = c.getContext('2d');
-    if (color < 0 && classic) { // casa vazia quadrada, com linha de grade discreta
-      ctx.fillStyle = theme.empty; ctx.fillRect(0, 0, px, px);
-      ctx.strokeStyle = theme.board; ctx.lineWidth = Math.max(1, px * 0.04);
-      ctx.strokeRect(0, 0, px, px);
+    if (color < 0 && classic) { // casa vazia: "encaixe" com contorno claro (v1.22.1: antes a grade preta engolia o contorno)
+      var gp = Math.max(1, Math.round(px * 0.035)), rr = px * 0.12, inner = px - 2 * gp;
+      Themes.roundRect(ctx, gp, gp, inner, inner, rr); ctx.fillStyle = theme.empty; ctx.fill();
+      var sh = ctx.createLinearGradient(0, gp, 0, px - gp); // leve fundo côncavo: mais escuro em cima, claro embaixo
+      sh.addColorStop(0, 'rgba(0,0,0,.16)'); sh.addColorStop(0.35, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(255,255,255,.05)');
+      ctx.fillStyle = sh; ctx.fill();
+      ctx.strokeStyle = theme.emptyEdge || theme.grid; ctx.lineWidth = Math.max(1, px * 0.03); ctx.stroke();
     } else if (color >= 0 && Skins.hasArt(skin)) {
       Skins.drawBlock(ctx, px, skin, theme, color);
     } else if (color >= 0 && classic) {
@@ -1069,8 +1072,8 @@
     if (!sb) return th;
     var key = th.id + '@' + lk;
     if (!boardThemes[key]) boardThemes[key] = Object.assign({}, th, {
-      id: key, board: mixHex(sb[1], '#000000', 0.35), grid: mixHex(sb[1], '#000000', 0.5),
-      empty: mixHex(sb[0], sb[1], 0.55), emptyEdge: mixHex(sb[0], '#ffffff', 0.08)
+      id: key, board: mixHex(sb[1], '#000000', 0.22), grid: mixHex(sb[1], '#000000', 0.3),
+      empty: mixHex(sb[0], sb[1], 0.55), emptyEdge: mixHex(sb[0], '#ffffff', 0.2)
     });
     return boardThemes[key];
   }
@@ -1899,6 +1902,14 @@
     inp.addEventListener('change', saveSettings);
   });
   $('#set-vibrate').addEventListener('change', function (e) { settings.vibrate = e.target.checked; saveSettings(); applySettings(); haptic('place'); });
+  // v1.22.1 (dono: "no meu celular não vibra"): teste que diz se o navegador aceitou vibrar. Se aceitou e não vibrou,
+  // o bloqueio é do sistema do celular (Não perturbe, economia de bateria, vibração desligada nas configurações).
+  $('#btn-vib-test').addEventListener('click', function () {
+    var okv = false;
+    try { okv = !!navigator.vibrate && navigator.vibrate(vibPattern([200, 120, 200])); } catch (e) {}
+    if (okv) toast(T('Pedido de vibração enviado'), T('Sentiu? Se não, o celular está bloqueando: confira o modo Não perturbe, a economia de bateria e a vibração nas configurações do aparelho.'));
+    else toast(T('Este navegador não deixou vibrar'), T('Abra o jogo pelo app instalado ou pelo Chrome. No iPhone não é possível vibrar.'));
+  });
   Array.prototype.forEach.call(document.querySelectorAll('input[name="vibStrength"]'), function (r) {
     r.addEventListener('change', function () { settings.vibStrength = r.value; saveSettings(); haptic('lines'); });
   });

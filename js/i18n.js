@@ -98,6 +98,9 @@
     'Mais {n} estilos para liberar jogando — sem compras.': '{n} more styles to unlock by playing — no purchases.',
     // v1.17 — Aventura, gemas, reviver, alerta
     'Gema coletada!': 'Gem collected!',
+    '📳 Testar vibração': '📳 Test vibration', 'Pedido de vibração enviado': 'Vibration request sent',
+    'Sentiu? Se não, o celular está bloqueando: confira o modo Não perturbe, a economia de bateria e a vibração nas configurações do aparelho.': 'Feel it? If not, your phone is blocking it: check Do Not Disturb, battery saver and vibration in the device settings.',
+    'Este navegador não deixou vibrar': 'This browser did not allow vibration', 'Abra o jogo pelo app instalado ou pelo Chrome. No iPhone não é possível vibrar.': 'Open the game from the installed app or Chrome. iPhones cannot vibrate from web games.',
     'Combo máx. ×{n}': 'Max combo ×{n}', 'Me bate se for capaz!': 'Beat me if you can!', 'Jogue grátis: {url}': 'Play free: {url}',
     'Imagem salva!': 'Image saved!', 'Está na sua galeria ou em Downloads — poste no story e desafie os amigos.': 'It is in your gallery or Downloads — post it to your story and challenge your friends.',
     'Seu progresso': 'Your progress',
