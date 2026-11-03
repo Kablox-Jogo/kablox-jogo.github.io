@@ -215,6 +215,9 @@
 
   /* ---------------- conquistas ---------------- */
   var ACHIEVEMENTS = [
+    // v1.25 (dono): prêmios da Semana do Terror 2026 — conquistas para sempre
+    { id: 'bat_hunter', name: 'Caçador de Morcegos', desc: 'Liberte 40 morcegos no desafio da Semana do Terror', of: function (s) { return [s.rares && s.rares.pk ? 1 : 0, 1]; } },
+    { id: 'nightmare_2026', name: 'Sobrevivente do Pesadelo', desc: 'Vença a Fase Pesadelo da Semana do Terror', of: function (s) { return [s.events && s.events.terror2026 && s.events.terror2026.nightmare ? 1 : 0, 1]; } },
     { id: 'first_line', name: 'Primeira linha', desc: 'Limpe sua primeira linha', of: function (s) { return [s.lines, 1]; } },
     { id: 'lines_100', name: 'Construtor', desc: 'Limpe 100 linhas no total', of: function (s) { return [s.lines, 100]; } },
     { id: 'lines_500', name: 'Arquiteto', desc: 'Limpe 500 linhas no total', of: function (s) { return [s.lines, 500]; } },
@@ -257,7 +260,7 @@
       best: { classic: 0, zen: 0 }, gamesByMode: { classic: 0, zen: 0, challenge: 0, daily: 0 },
       themesSeen: { jardim: 1 }, challenges: {}, daily: { day: '', best: 0, played: 0 },
       missionsDay: '', missions: [], missionsDone: 0, missionStars: 0, achievements: {}, surpriseSeen: {}, chapterRewards: {}, surprises: 0, scale: 2,
-      season: 0, legend: { classic: 0, daily: 0 }, xp: 0, streak: { days: 0, last: '', best: 0, shields: 1, shieldWeek: '' }, rares: {}, chestDay: '' }; // v1.24: js/season.js // scale 2 = pontuação com níveis (v1.11+)
+      season: 0, legend: { classic: 0, daily: 0 }, xp: 0, streak: { days: 0, last: '', best: 0, shields: 1, shieldWeek: '' }, rares: {}, chestDay: '', events: {} }; // v1.25: events = álbum de eventos (participação, abóboras, blocos vistos) — nunca é apagado // v1.24: js/season.js // scale 2 = pontuação com níveis (v1.11+)
   }
 
   /** Aceita só valores com o mesmo tipo do modelo (dados corrompidos voltam ao padrão). */

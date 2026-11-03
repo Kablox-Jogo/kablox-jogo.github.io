@@ -65,9 +65,9 @@
       { id: 'challenge', icon: 'i-flag', name: T('Desafios'), line: T('Fases com objetivo e estrelas.'), rules: P.MODES.challenge.rules.map(T),
         info: T('{a} de {b} desafios concluídos · {s} estrelas', { a: P.doneChallenges(G.stats), b: P.CHALLENGES.length, s: P.stars(G.stats) }) }
     ];
-    if (G.eventNow()) list.unshift({ id: 'event', emoji: '🎃', name: T('Semana do Terror'), line: T('Limpe {n} abóboras 🎃 numa partida só.', { n: G.eventNow().goal }),
-      rules: [T('As abóboras aparecem bem mais neste desafio.'), T('Prêmio: a Abóbora vira um bloco raro seu para sempre.'), T('O evento acaba domingo, 8/11.')],
-      info: G.stats.rares && G.stats.rares.pk ? T('Você já ganhou a Abóbora! Jogue de novo por diversão.') : T('Prêmio ainda não conquistado') });
+    if (G.eventNow()) list.unshift({ id: 'event', emoji: '🎃', name: T('Semana do Terror'), line: T('Liberte {n} morcegos 🦇 numa partida só.', { n: G.eventNow().goal }),
+      rules: [T('Quebre as gaiolas para soltar os morcegos. Elas aparecem bem mais neste desafio.'), T('Prêmio: a conquista Caçador de Morcegos, para sempre.'), T('O evento acaba domingo, 8/11.')],
+      info: G.stats.rares && G.stats.rares.pk ? T('Você já é Caçador de Morcegos! Jogue de novo por diversão.') : T('Prêmio ainda não conquistado') });
     list.forEach(function (m) {
       var card = h('article', 'mode-card mc-' + m.id), head = h('div', 'mode-head');
       if (m.emoji) head.appendChild(h('span', 'mode-emoji', m.emoji)); else head.innerHTML = icon(m.icon, 34);
@@ -169,8 +169,46 @@
   function skinNameOf(id) { var s = G.Skins.LIST.filter(function (x) { return x.id === id; })[0]; return s ? s.name : id; }
 
   /* ---------------- coleção ---------------- */
+  /* v1.25: álbum de eventos — cada evento que o jogador jogou fica guardado para sempre (selo, blocos vistos, abóboras) */
+  var hwSheet = null;
+  function drawHwIcon(cv, key) {
+    var art = window.MZHalloweenArt; if (!art) return;
+    var row = art.keys.indexOf(key), c = art.cell, ctx = cv.getContext('2d');
+    function paint() { ctx.clearRect(0, 0, 88, 88); for (var q = 0; q < 4; q++) ctx.drawImage(hwSheet, q * c, row * c, c, c, (q % 2) * 44, Math.floor(q / 2) * 44, 44, 44); }
+    if (!hwSheet) { hwSheet = new Image(); hwSheet.src = art.src; }
+    if (hwSheet.complete && hwSheet.naturalWidth) paint(); else hwSheet.addEventListener('load', paint);
+  }
+  function renderEventAlbum(body, st) {
+    var evs = (window.MZEvents && window.MZEvents.LIST) || [], now = G.eventNow();
+    evs.forEach(function (ev) {
+      var mine = (st.events || {})[ev.id], active = now && now.id === ev.id;
+      if (!ev.album || (!mine && !active)) return; // evento que você não jogou (e que já acabou) não aparece
+      var seen = (mine && mine.seen) || {}, nSeen = ev.album.filter(function (a) { return seen[a[0]]; }).length;
+      var sec = section(ev.icon + ' ' + T(ev.name) + ' 2026', active
+        ? T('Só no Desafio do evento. Descubra os blocos de Halloween jogando: cada estilo que aparecer na partida entra aqui. Fica guardado para sempre.')
+        : T('Evento encerrado. Tudo o que você conquistou fica guardado aqui para sempre.'));
+      var sel = h('p', 'm-note ev-badge' + (mine ? ' got' : ''), mine ? '🏅 ' + T(ev.badge) + ' — ' + T('guardado para sempre') : T('Jogue o Desafio do evento para ganhar o {b}.', { b: T(ev.badge) }));
+      sec.appendChild(sel);
+      var pkTxt = st.rares && st.rares.pk ? T('🏆 Caçador de Morcegos: conquistado!') : T('🏆 Caçador de Morcegos: liberte {n} morcegos numa partida (seu melhor: {b}).', { n: ev.goal, b: (mine && mine.pk) || 0 });
+      sec.appendChild(h('p', 'm-note', pkTxt));
+      if (ev.nightmare) sec.appendChild(h('p', 'm-note ev-badge' + (mine && mine.nightmare ? ' got' : ''), mine && mine.nightmare ? '👹 ' + T(ev.nightmare.badge) + ' — ' + T('guardado para sempre') : T('Fase Pesadelo: vença o desafio para liberar e ganhar o {b}.', { b: T(ev.nightmare.badge) })));
+      sec.appendChild(h('p', 'm-note', T('Blocos descobertos: {a} de {b}', { a: nSeen, b: ev.album.length })));
+      var grid = h('div', 'col-grid gallery');
+      ev.album.forEach(function (a) {
+        var got = !!seen[a[0]], b = h('div', 'col-item' + (got ? '' : ' locked'));
+        b.setAttribute('role', 'img'); b.setAttribute('aria-label', got ? T(a[1]) : T('Bloco ainda não descoberto'));
+        var cv = document.createElement('canvas'); cv.width = 88; cv.height = 88; b.appendChild(cv);
+        if (got) drawHwIcon(cv, a[0]); else { var cx = cv.getContext('2d'); cx.fillStyle = '#2a2140'; cx.fillRect(0, 0, 88, 88); cx.fillStyle = '#8f7fb0'; cx.font = 'bold 40px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('?', 44, 46); }
+        b.appendChild(h('strong', '', got ? T(a[1]) : '???'));
+        grid.appendChild(b);
+      });
+      sec.appendChild(grid);
+      body.appendChild(sec);
+    });
+  }
   function renderCollection() {
     var body = $('#body-collection'), st = G.stats; body.innerHTML = '';
+    renderEventAlbum(body, st);
     // v1.18 (pedido do dono): galeria — só para ver. Toda partida começa no Clássico e os blocos mudam sozinhos.
     var sk = section(T('Galeria de blocos'), T('Os estilos que você já liberou. Toda partida começa no Clássico e, em jogadas especiais, os blocos se transformam nestes estilos.'));
     var grid = h('div', 'col-grid gallery'), hidden = 0;
@@ -360,6 +398,10 @@
   window.GBMenus = {
     onShow: function (name) {
       if (renderers[name]) { renderers[name](); var b = document.querySelector('#screen-' + name + ' .menu-body'); if (b) b.scrollTop = 0; }
+    },
+    refresh: function (name) { // v1.25: redesenha sem voltar para o topo (ex.: imagem dos blocos acabou de carregar)
+      var b = document.querySelector('#screen-' + name + ' .menu-body'), top = b ? b.scrollTop : 0;
+      if (renderers[name]) { renderers[name](); if (b) b.scrollTop = top; }
     }
   };
 })();

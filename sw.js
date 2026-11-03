@@ -1,7 +1,7 @@
 /* Kablox — service worker (funciona offline após o primeiro carregamento)
  * Para publicar uma atualização: altere VERSION abaixo (ex.: 'gb-1.1.1') e publique de novo.
  */
-const VERSION = 'gb-1.24.0';
+const VERSION = 'gb-1.25.0';
 const ASSETS = [
   './',
   './index.html',
@@ -19,6 +19,8 @@ const ASSETS = [
   './js/season.js',
   './js/weekly.js',
   './js/events.js',
+  './js/halloween-art.js',
+  './js/normal-art.js',
   './js/backup.js',
   './js/news.js',
   './js/ui.js',

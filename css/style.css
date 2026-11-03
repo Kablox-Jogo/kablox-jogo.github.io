@@ -237,6 +237,11 @@ body.anim-off .slot.shake { animation: none; box-shadow: inset 0 0 0 3px rgba(25
 #toast strong { color: var(--accent); font-size: 17px; }
 #toast span { font-size: 14px; opacity: .9; }
 body.anim-off #toast { transition: none; }
+/* v1.25: na partida o aviso fica compacto, numa linha só, e nunca entra no tabuleiro */
+#toast.ingame { padding: 7px 14px; border-radius: 14px; min-width: 0; max-width: min(92vw, 420px); }
+#toast.ingame strong { font-size: 15px; }
+#toast.ingame span { font-size: 12.5px; }
+#toast.ingame span:empty { display: none; }
 
 #update-bar {
   position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 12px); transform: translateX(-50%);
@@ -778,11 +783,24 @@ body.q-low .emblem { animation: none; will-change: auto; }
    v1.17 — Aventura (gemas, capítulos), reviver, borda de combo e alerta de perigo
    ====================================================================== */
 #board { transition: box-shadow .35s ease; }
-#board.combo-1 { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 2px rgba(255,194,30,.55), 0 0 18px rgba(255,194,30,.35); }
-#board.combo-2 { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(255,122,26,.8), 0 0 26px rgba(255,122,26,.5); }
-#board.combo-3 { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(255,61,110,.9), 0 0 34px rgba(255,61,110,.6), 0 0 60px rgba(155,92,255,.35); }
-body.anim-full #board.combo-2, body.anim-full #board.combo-3 { animation: comboRing 1.6s ease-in-out infinite; }
+/* v1.25: moldura de combo na cor do visual (--frame-rgb), 5 níveis; some e aparece suave; falta 1 peça = apaga devagar */
+#board { --frame-rgb: 242,201,76; transition: box-shadow .8s ease, filter .8s ease; }
+#board.combo-a { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 1px rgba(var(--frame-rgb),.35), 0 0 12px rgba(var(--frame-rgb),.22); }
+#board.combo-b { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 2px rgba(var(--frame-rgb),.5), 0 0 18px rgba(var(--frame-rgb),.32); }
+#board.combo-c { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(var(--frame-rgb),.75), 0 0 26px rgba(var(--frame-rgb),.45); }
+#board.combo-d { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(var(--frame-rgb),.85), 0 0 30px rgba(var(--frame-rgb),.55), 0 0 56px rgba(var(--frame-rgb),.25); }
+#board.combo-e { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(var(--frame-rgb),.9), 0 0 34px rgba(var(--frame-rgb),.6); }
+body.anim-full #board.combo-c { animation: comboRing 1.8s ease-in-out infinite; }
+body.anim-full #board.combo-d { animation: comboWave 1.4s ease-in-out infinite; }
+@keyframes comboWave { 50% { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(var(--frame-rgb),.95), 0 0 40px rgba(var(--frame-rgb),.65), 0 0 80px rgba(var(--frame-rgb),.32); } }
+#board.fading { transition-duration: 2.4s; }
+#board.fading.combo-a, #board.fading.combo-b, #board.fading.combo-c, #board.fading.combo-d { animation: none; box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 1px rgba(var(--frame-rgb),.28), 0 0 10px rgba(var(--frame-rgb),.16); }
 @keyframes comboRing { 50% { filter: brightness(1.06); } }
+/* v1.25: moldura assombrada no evento — laranja por dentro, roxo por fora */
+#board.haunt.combo-b { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 2px rgba(255,122,26,.55), 0 0 20px rgba(150,70,255,.4); }
+#board.haunt.combo-c { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(255,122,26,.8), 0 0 26px rgba(150,70,255,.55); }
+#board.haunt.combo-d { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(255,122,26,.9), 0 0 30px rgba(150,70,255,.6), 0 0 60px rgba(150,70,255,.3); }
+#board.haunt.combo-e { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(255,122,26,.95), 0 0 36px rgba(150,70,255,.7); }
 #board.danger { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(255,60,60,.75), 0 0 26px rgba(255,40,40,.45); }
 body:not(.anim-off) #board.danger { animation: dangerPulse 1.8s ease-in-out infinite; }
 @keyframes dangerPulse { 50% { box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px rgba(255,60,60,.4), 0 0 14px rgba(255,40,40,.2); } }
@@ -971,3 +989,7 @@ body.ev-terror .bg-layer.on { filter: hue-rotate(-25deg) saturate(1.15); }
   .home-grid .tile svg { width: 22px; height: 22px; }
   .bk-big.play-btn { min-height: 60px; }
 }
+
+/* v1.25: álbum do evento */
+.ev-badge { font-weight: 800; }
+.ev-badge.got { color: #ffb347; }

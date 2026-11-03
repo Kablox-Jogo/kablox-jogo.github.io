@@ -19,7 +19,7 @@
     { id: 'r1', min: 10000, name: 'Vidro doce' },
     { id: 'r2', min: 25000, name: 'Brasa' },
     { id: 'r3', min: 50000, name: 'Pérola' },
-    { id: 'pk', min: Infinity, name: 'Abóbora', event: true } // prêmio do Desafio da Semana do Terror (Halloween 2026)
+    { id: 'pk', min: Infinity, name: 'Morcego', event: true } // prêmio do Desafio da Semana do Terror (Halloween 2026)
   ];
   /** Libera os raros alcançados com `score`. Retorna a lista dos que acabaram de ser liberados. */
   function unlockRares(s, score) {

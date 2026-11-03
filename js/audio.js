@@ -63,7 +63,7 @@
       o.type = opt.type || 'sine';
       o.frequency.setValueAtTime(freq, t);
       if (opt.to) o.frequency.exponentialRampToValueAtTime(opt.to, t + (opt.dur || 0.15));
-      var vol = opt.vol || 0.12, dur = opt.dur || 0.15;
+      var vol = (opt.vol || 0.12) * (this._gk || 1), dur = opt.dur || 0.15;
       if (!this._slot(t, dur)) return;
       g.gain.setValueAtTime(0.0001, t);
       g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
@@ -85,7 +85,7 @@
       var src = ctx.createBufferSource(); src.buffer = noiseBuf;
       var f = ctx.createBiquadFilter(); f.type = opt.filter || 'lowpass'; f.frequency.value = opt.freq || 800; f.Q.value = opt.q || 0.8;
       if (opt.toFreq) f.frequency.exponentialRampToValueAtTime(opt.toFreq, t + dur);
-      var g = ctx.createGain(), vol = opt.vol || 0.2;
+      var g = ctx.createGain(), vol = (opt.vol || 0.2) * (this._gk || 1);
       g.gain.setValueAtTime(0.0001, t);
       g.gain.exponentialRampToValueAtTime(vol, t + (opt.attack || 0.005));
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -95,6 +95,11 @@
 
     /** Som de quebra próprio de cada estilo de bloco. */
     breakSkin: function (skin, lines) {
+      // v1.25: volumes acertados para nenhuma quebra ficar alta ou baixa demais (medido com tools/sound_check.py)
+      this._gk = { lava: 0.6, stone: 0.65, circuit: 1.5, rainbow: 1.5, holo: 1.5, energy: 1.5, galaxy: 1.45, fur: 1.4, wool: 1.4 }[skin] || 1;
+      try { this._breakSkin(skin, lines); } finally { this._gk = 1; }
+    },
+    _breakSkin: function (skin, lines) {
       var n = Math.min(lines || 1, 4), i;
       if (skin === 'ice') {
         this._noise({ filter: 'highpass', freq: 3500, dur: 0.18, vol: 0.12 });

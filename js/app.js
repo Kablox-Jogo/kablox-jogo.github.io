@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.24.0';
+  var VERSION = '1.25.0';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise, Season = window.MZSeason, Weekly = window.MZWeekly, Events = window.MZEvents;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   /* v1.24 (reclamação dos jogadores: "tabuleiro quase transparente, machuca a vista"): contraste mínimo garantido em
@@ -140,9 +140,64 @@
     return lk && lk.skin && settings.surprise && settings.blocks === 'classic' && Skins.ids.indexOf(lk.skin) !== -1 ? lk.skin : null;
   }
   function curSkin() { return tempSkin() || settings.blocks; }
+  /* v1.25: quebra assombrada do evento — o bloco incha, sobe virando fumaça; alguns soltam um morcego */
+  function drawBat(ctx, x, y, s, flap) {
+    ctx.beginPath(); ctx.ellipse(x, y, s * 0.18, s * 0.24, 0, 0, 7); ctx.fill();
+    var w = s * (0.35 + 0.25 * flap);
+    [-1, 1].forEach(function (d) {
+      ctx.beginPath(); ctx.moveTo(x, y - s * 0.05);
+      ctx.quadraticCurveTo(x + d * w * 0.6, y - s * 0.45 * flap - s * 0.1, x + d * w * 1.6, y - s * 0.2 * flap);
+      ctx.quadraticCurveTo(x + d * w * 1.1, y + s * 0.05, x + d * w * 0.9, y + s * 0.15);
+      ctx.quadraticCurveTo(x + d * w * 0.5, y + s * 0.02, x, y + s * 0.1); ctx.fill();
+    });
+  }
+  function drawHauntBreak(ctx, spr, cx, cy, s, tt, seed, ghost) {
+    ctx.save();
+    if (tt < 0.18) { // incha com brilho roxo
+      var k = tt / 0.18, sc = 1 + 0.12 * Math.sin(k * Math.PI / 2);
+      ctx.drawImage(spr, cx - s * sc / 2, cy - s * sc / 2, s * sc, s * sc);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45 * k; ctx.fillStyle = '#9b4dff';
+      ctx.beginPath(); ctx.arc(cx, cy, s * 0.55, 0, 7); ctx.fill();
+    } else {
+      var u = (tt - 0.18) / 0.82, rise = s * (ghost ? 1.3 : 0.7) * u;
+      ctx.globalAlpha = Math.max(0, 1 - u * 1.3); var sc2 = 1 - 0.5 * u; // o bloco sobe e some
+      ctx.drawImage(spr, cx - s * sc2 / 2 + Math.sin(u * 9 + seed) * s * 0.06, cy - s * sc2 / 2 - rise, s * sc2, s * sc2);
+      for (var i = 0; i < 4; i++) { // fumaça roxa e laranja
+        var a = seed * 1.3 + i * 1.57, d = s * (0.15 + 0.5 * u);
+        ctx.globalAlpha = 0.38 * (1 - u); ctx.fillStyle = i % 2 ? 'rgba(160,80,255,1)' : 'rgba(255,130,40,1)';
+        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * d * 0.6 - s * 0.4 * u, s * (0.16 + 0.3 * u), 0, 7); ctx.fill();
+      }
+      if (seed % 3 === 0) { // um morcego sai voando
+        var dir = seed % 2 ? 1 : -1, bx = cx + dir * s * 1.6 * u, by = cy - s * 1.9 * u + Math.sin(u * 14) * s * 0.08;
+        ctx.globalAlpha = Math.min(1, 2.2 * (1 - u)); ctx.fillStyle = '#1a0f24'; ctx.shadowColor = '#ff8a1f'; ctx.shadowBlur = s * 0.25; // contorno laranja para aparecer no tabuleiro escuro
+        drawBat(ctx, bx, by, s * 0.75, Math.abs(Math.sin(u * 22)));
+      }
+    }
+    ctx.restore();
+  }
+  /* v1.25: blocos de Halloween (js/halloween-art.js) — só durante o evento e depois que a imagem carregou */
+  var hwImg = null, hwReady = false;
+  function hwTile(skin, theme) {
+    var art = window.MZHalloweenArt; if (!art || !evGame()) return null; // v1.25 (dono): Halloween só no modo Evento — Clássico e Zen ficam normais
+    if (!hwImg) { hwImg = new Image(); hwImg.onload = function () { hwReady = true; sprites = {}; rareCache = {}; if (typeof drawTray === 'function' && state) drawTray(false); requestRender(); }; hwImg.src = art.src; }
+    if (!hwReady) return null;
+    var k = skin;
+    if (skin === 'classic' && theme) k = { verdeagua: 'v-verdeagua', brancoazul: 'v-brancoazul', terra: 'v-terra' }[theme.id] || 'classic';
+    var row = art.keys.indexOf(k); return row < 0 ? null : { row: row, key: k };
+  }
+  /* v1.25: blocos normais das imagens do dono (js/normal-art.js) — fora do modo Evento */
+  var nmImg = null, nmReady = false;
+  function nmTile(skin) {
+    var art = window.MZNormalArt; if (!art || evGame()) return null;
+    if (!nmImg) { nmImg = new Image(); nmImg.onload = function () { nmReady = true; sprites = {}; if (state) drawTray(false); requestRender(); if (window.GBMenus && window.GBMenus.refresh && screenIs('collection')) window.GBMenus.refresh('collection'); if (screenIs('home') || overlayOpen()) buildSkinPicker && $('#skins') && buildSkinPicker(); }; nmImg.src = art.src; }
+    if (!nmReady) return null;
+    var row = art.keys.indexOf(skin); return row < 0 ? null : { row: row, key: skin, img: nmImg, cell: art.cell, normal: true };
+  }
+  setTimeout(function () { nmTile('ice'); }, 0); // v1.25: começa a carregar os blocos novos já na abertura (a galeria não mostra os antigos)
+  function artTile(skin, theme) { var t = hwTile(skin, theme); if (t) { t.img = hwImg; t.cell = window.MZHalloweenArt.cell; return t; } return nmTile(skin); }
   function sprite(theme, color, px, skinOpt) {
     var skin = skinOpt || curSkin(), classic = skin !== 'theme'; // casas vazias quadradas fora do modo "Do tema"
-    var key = theme.id + '|' + color + '|' + px + '|' + skin + (settings.symbols ? '|s' : ''), c = sprites[key];
+    var key = theme.id + '|' + color + '|' + px + '|' + skin + (settings.symbols ? '|s' : '') + (color >= 0 && artTile(skin, theme) ? (evGame() ? '|hw' : '|nm') : ''), c = sprites[key];
     if (c) return c;
     c = document.createElement('canvas');
     c.width = c.height = px;
@@ -154,6 +209,10 @@
       sh.addColorStop(0, 'rgba(0,0,0,.16)'); sh.addColorStop(0.35, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(255,255,255,.05)');
       ctx.fillStyle = sh; ctx.fill();
       ctx.strokeStyle = theme.emptyEdge || theme.grid; ctx.lineWidth = Math.max(1, px * 0.03); ctx.stroke();
+    } else if (color >= 0 && artTile(skin, theme)) { // v1.25: blocos desenhados nas imagens do dono (Halloween no evento, normais fora dele)
+      var hw = artTile(skin, theme), hc = hw.cell;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(hw.img, (color % 4) * hc, hw.row * hc, hc, hc, 0, 0, px, px);
     } else if (color >= 0 && Skins.hasArt(skin)) {
       Skins.drawBlock(ctx, px, skin, theme, color);
     } else if (color >= 0 && classic) {
@@ -217,9 +276,12 @@
     return real - clock.off;
   }
   function slowMo(ms, k, delay) { var t0 = performance.now(); animNow(t0); clock.from = t0 + (delay || 0); clock.until = clock.from + ms; clock.k = k; }
-  function onFire() { return !!state && state.combo >= 10 && settings.anim === 'full' && settings.quality !== 'low' && state.mode !== 'tutorial' && !document.hidden && screenIs('game'); }
+  function onFire() { return !!state && state.combo >= 10 && settings.anim === 'full' && settings.quality !== 'low' && state.mode !== 'tutorial' && state.mode !== 'zen' && !document.hidden && screenIs('game'); }
+  /** v1.25: faíscas correndo pela moldura enquanto o combo ×3+ está vivo (fora do Zen e dos efeitos leves). */
+  function comboFrameOn() { return !!state && state.combo >= 3 && state.combo < 10 && !state.over && settings.anim === 'full' && settings.quality !== 'low' && state.mode !== 'tutorial' && state.mode !== 'zen' && !document.hidden && screenIs('game'); }
   var FACES = { jelly: 1, fur: 1, candy: 1, bubble: 1, cheese: 1 }; // v1.24: estilos com "carinha"
-  function facesOn() { return !!state && !!FACES[curSkin()] && settings.anim === 'full' && settings.quality !== 'low' && !document.hidden && screenIs('game'); }
+  function facesOn() { return !!state && !!FACES[curSkin()] && !artTile(curSkin(), boardTheme()) && settings.anim === 'full' && settings.quality !== 'low' && !document.hidden && screenIs('game'); }
+  function cagesOn() { if (!state || !state.rare || settings.anim !== 'full' || document.hidden || !screenIs('game')) return false; for (var k in state.rare) if (state.rare[k] === 'pk') return true; return false; }
   var lastLive = 0;
   // v1.23 (otimização, pedido do dono): se o celular engasga nas animações, passa sozinho para "Efeitos: Leves" (uma vez, com aviso)
   var perf = { last: 0, samples: [], done: false };
@@ -240,17 +302,37 @@
     if (anims.length || drag) watchPerf(t); else perf.last = 0;
     var real = t; t = animNow(real);
     // só o movimento contínuo (sem animação nem arraste): até ~30 quadros por segundo
-    if (!anims.length && !drag && (live() || onFire() || facesOn()) && real - lastLive < 30) { requestRender(); return; }
+    if (!anims.length && !drag && (live() || onFire() || comboFrameOn() || facesOn() || cagesOn()) && real - lastLive < 30) { requestRender(); return; }
     lastLive = real;
     anims = anims.filter(function (a) { return t - a.start < a.dur; });
     render(t);
-    if (anims.length || glowing() || live() || onFire() || facesOn() || (tutTarget && settings.anim !== 'off')) requestRender();
+    if (anims.length || glowing() || live() || onFire() || comboFrameOn() || facesOn() || cagesOn() || (tutTarget && settings.anim !== 'off')) requestRender();
   }
 
   // estilos com movimento contínuo (pelos, gelatina): só com animações completas e o jogo visível
   function live() {
-    return Skins.isLive(curSkin()) && settings.anim === 'full' && !document.hidden &&
+    if (hwFurOn()) return true; // v1.25: pelúcias monstruosas respiram e piscam
+    return Skins.isLive(curSkin()) && !artTile(curSkin(), boardTheme()) && settings.anim === 'full' && !document.hidden &&
       screens.game.classList.contains('active') && !!state;
+  }
+  function hwFurOn() { return !!state && curSkin() === 'fur' && !!artTile('fur', null) && settings.anim === 'full' && settings.quality !== 'low' && !document.hidden && screens.game.classList.contains('active'); }
+  var HW_FUR = ['#e0508f', '#ead8e6', '#e0508f', '#8340c8'], NM_FUR = ['#f2eef2', '#f08cb8', '#f08cb8', '#f2eef2'];
+  function drawHwFur(ctx, spr, x, y, cell, now, seed, color) { // v1.25: pelo balançando de leve + olhos que piscam
+    var b = 1 + 0.035 * Math.sin(now / 420 + seed), rot = 0.035 * Math.sin(now / 610 + seed * 1.7), cx = x + cell / 2, cy = y + cell / 2;
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(b, 2 - b);
+    ctx.drawImage(spr, -cell / 2, -cell / 2, cell, cell);
+    var furCols = evGame() ? HW_FUR : NM_FUR, cute = !evGame(); // normal: pelúcia fofinha (olhos pequenos)
+    ctx.strokeStyle = furCols[color % 4]; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, cell * 0.035); ctx.globalAlpha = 0.85;
+    for (var k = 0; k < 5; k++) { // tufos no alto da cabeça balançando
+      var fx = -cell * 0.3 + k * cell * 0.15, sway = Math.sin(now / 260 + seed + k * 1.3) * cell * 0.06;
+      ctx.beginPath(); ctx.moveTo(fx, -cell * 0.36); ctx.quadraticCurveTo(fx + sway, -cell * 0.46, fx + sway * 1.6, -cell * 0.5); ctx.stroke();
+    }
+    var per = 2600 + (seed * 137) % 2200, ph = (now + seed * 911) % per; // pisca de vez em quando, cada um no seu tempo
+    if (ph < 150) {
+      var k2 = Math.sin(ph / 150 * Math.PI); ctx.globalAlpha = 1; ctx.fillStyle = furCols[color % 4];
+      [-0.15, 0.15].forEach(function (ex) { ctx.beginPath(); ctx.ellipse(ex * (cute ? 0.85 : 1) * cell, cute ? -cell * 0.04 : 0, cell * (cute ? 0.07 : 0.12), cell * (cute ? 0.05 : 0.075) * k2 + 0.5, 0, 0, 7); ctx.fill(); });
+    }
+    ctx.restore();
   }
 
   function glowing() {
@@ -280,7 +362,8 @@
     if (sw) { ctx.globalAlpha = sw.p; ctx.fillStyle = sw.to.board; ctx.fill(); ctx.globalAlpha = 1; }
 
     var prev = drag && drag.valid ? drag : null;
-    var liveNow = live(), vary = !!Skins.VARY[curSkin()];
+    var hwOn = !!artTile(curSkin(), th), furLive = hwOn && hwFurOn(); // v1.25: blocos de Halloween não giram/espelham (são desenhos prontos)
+    var liveNow = !hwOn && live(), vary = !hwOn && !!Skins.VARY[curSkin()];
     var clearRows = {}, clearCols = {};
     if (prev && prev.preview) {
       prev.preview.rows.forEach(function (r) { clearRows[r] = 1; });
@@ -295,7 +378,8 @@
         if (v < 0) ctx.drawImage(sprite(cth, -1, px), x, y, cell, cell);
         else {
           var color = (prev && (clearRows[r] || clearCols[c])) ? prev.piece.c : v;
-          if (liveNow) Skins.drawLive(ctx, sprite(cth, color, px), curSkin(), cth, color, x, y, cell, now, r * 7 + c * 3);
+          if (furLive) drawHwFur(ctx, sprite(cth, color, px), x, y, cell, now, r * 7 + c * 3, color);
+          else if (liveNow) Skins.drawLive(ctx, sprite(cth, color, px), curSkin(), cth, color, x, y, cell, now, r * 7 + c * 3);
           else if (vary) drawVaried(ctx, sprite(cth, color, px), x, y, cell, (r * 5 + c * 3) % 4);
           else ctx.drawImage(sprite(cth, color, px), x, y, cell, cell);
         }
@@ -307,10 +391,22 @@
     });
 
     if (state.rare) for (var rk in state.rare) { // v1.24: blocos raros no tabuleiro (só visual)
-      var ri = +rk; if (state.board[ri] < 0) continue;
+      var ri = +rk; if (state.board[ri] < 0 || (state.rare[rk] === 'pk' && state.mode !== 'event')) continue; // v1.25: gaiola só no modo Evento
       var rx = pad + (ri % SIZE) * cell, ry = pad + Math.floor(ri / SIZE) * cell;
       ctx.save(); if (settings.anim === 'full' && state.rare[rk] !== 'pk') ctx.globalAlpha = 0.82 + 0.18 * Math.sin(now / 300 + ri);
-      ctx.drawImage(rareSprite(state.rare[rk], px), rx, ry, cell, cell); ctx.restore();
+      var rsh = state.rare[rk] === 'pk' && settings.anim === 'full' && (now + ri * 377) % 2400 < 300 ? Math.sin(now / 22) * cell * 0.05 : 0; // o morcego sacode a gaiola
+      ctx.drawImage(rareSprite(state.rare[rk], px), rx + rsh, ry, cell, cell);
+      if (state.rare[rk] === 'pk' && state.pkAge && state.pkAge[rk] != null) { // v1.25: jogadas até o morcego fugir (aparece nas 3 últimas)
+        var fleeLeft = evFlee() - ((state.evMoves || 0) - state.pkAge[rk]);
+        if (fleeLeft <= 3) {
+          var bxr = rx + cell * 0.8, byr = ry + cell * 0.2, brr = cell * 0.19;
+          ctx.fillStyle = fleeLeft <= 1 ? '#e8243c' : '#b0306a'; ctx.beginPath(); ctx.arc(bxr, byr, brr, 0, 7); ctx.fill();
+          ctx.lineWidth = Math.max(1, cell * 0.03); ctx.strokeStyle = '#fff'; ctx.stroke();
+          ctx.fillStyle = '#fff'; ctx.font = '900 ' + Math.round(cell * 0.26) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(String(Math.max(1, fleeLeft)), bxr, byr + cell * 0.01);
+        }
+      }
+      ctx.restore();
     }
     if (state.spec) for (var sk in state.spec) { // v1.21: blocos especiais no tabuleiro
       var si = +sk; if (state.board[si] >= 0) drawSpecialOn(ctx, state.spec[sk], pad + (si % SIZE) * cell, pad + Math.floor(si / SIZE) * cell, cell, px, now);
@@ -378,6 +474,7 @@
 
     if (facesOn()) drawFaces(ctx, now);
     if (onFire()) drawFire(ctx, now);
+    else if (comboFrameOn()) drawComboSparks(ctx, now);
     for (var i = 0; i < anims.length; i++) drawAnim(ctx, anims[i], now, px);
   }
 
@@ -403,11 +500,28 @@
     }
     ctx.restore();
   }
+  /* v1.25: faíscas na cor do visual dando a volta na borda do tabuleiro; mais faíscas e mais rápidas conforme o combo.
+   *  Quando só falta 1 peça para o combo acabar, elas ficam mais fracas (a moldura "apagando"). */
+  function drawComboSparks(ctx, now) {
+    var S = L.size, k = state.combo, n = k >= 7 ? 8 : k >= 5 ? 6 : 4, per = 4 * (S - 6), speed = k >= 7 ? 0.11 : k >= 5 ? 0.085 : 0.06;
+    var left = Logic.CONFIG.combo.window - state.movesSinceClear, dim = left <= 1 ? 0.45 : 1, col = boardTheme().accent, haunt = evGame();
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = col;
+    for (var i = 0; i < n; i++) {
+      if (haunt) col = i % 2 ? '#a45bff' : '#ff8a1f'; // v1.25: faíscas roxas e laranja no evento
+      var d = ((now * speed + i * per / n) % per + per) % per, side = Math.floor(d / (S - 6)), o = d % (S - 6) + 3, x, y;
+      if (side === 0) { x = o; y = 3; } else if (side === 1) { x = S - 3; y = o; } else if (side === 2) { x = S - o; y = S - 3; } else { x = 3; y = S - o; }
+      var r = L.cell * 0.09 * (0.8 + 0.3 * Math.sin(now / 120 + i));
+      var g = ctx.createRadialGradient(x, y, 0, x, y, r * 3); g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = 0.55 * dim; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 3, 0, 7); ctx.fill();
+      ctx.globalAlpha = 0.95 * dim; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r * 0.6, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  }
   /* v1.24: fogo subindo da borda de baixo do tabuleiro (e brilho quente nas laterais) com combo ×10 ou mais */
   function drawFire(ctx, now) {
     var S = L.size, n = 9, cell = L.cell;
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    var side = ctx.createLinearGradient(0, 0, cell * 0.6, 0); side.addColorStop(0, 'rgba(255,120,30,.42)'); side.addColorStop(1, 'rgba(255,120,30,0)');
+    var side = ctx.createLinearGradient(0, 0, cell * 0.6, 0); side.addColorStop(0, 'rgba(255,120,30,.26)'); side.addColorStop(1, 'rgba(255,120,30,0)');
     ctx.fillStyle = side; ctx.fillRect(0, 0, cell * 0.6, S);
     ctx.save(); ctx.translate(S, 0); ctx.scale(-1, 1); ctx.fillRect(0, 0, cell * 0.6, S); ctx.restore();
     for (var k = 0; k < n; k++) {
@@ -416,7 +530,7 @@
         var x = (k + 0.5) / n * S + Math.sin(ph * 2.3) * cell * 0.15, h = cell * (1.3 + 0.6 * Math.sin(now / 170 + k)), y = S - rise * h;
         var r = cell * (0.75 - 0.45 * rise) * (layer ? 0.7 : 1);
         var g = ctx.createRadialGradient(x, y, 0, x, y, r);
-        g.addColorStop(0, layer ? 'rgba(255,235,140,.8)' : 'rgba(255,150,40,.7)'); g.addColorStop(1, 'rgba(255,90,20,0)');
+        g.addColorStop(0, layer ? (evGame() ? 'rgba(190,120,255,.8)' : 'rgba(255,235,140,.8)') : 'rgba(255,150,40,.7)'); // v1.25: fogo roxo e laranja no evento g.addColorStop(1, 'rgba(255,90,20,0)');
         ctx.globalAlpha = 1 - rise * 0.8; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
       }
     }
@@ -473,6 +587,25 @@
   var rareCache = {};
   function rareSprite(t, px) {
     var key = t + px; if (rareCache[key]) return rareCache[key];
+    if (t === 'pk') { // v1.25 (ideia do dono): gaiolinha com morcego — quebre a linha para soltar o morcego
+      var hc0 = document.createElement('canvas'); hc0.width = hc0.height = px; var h0 = hc0.getContext('2d');
+      h0.save(); Themes.roundRect(h0, px * 0.06, px * 0.06, px * 0.88, px * 0.88, px * 0.18); h0.clip();
+      var bg0 = h0.createRadialGradient(px * 0.5, px * 0.45, px * 0.05, px * 0.5, px * 0.5, px * 0.6);
+      bg0.addColorStop(0, '#d9822b'); bg0.addColorStop(0.5, '#5a2470'); bg0.addColorStop(1, '#170a24'); h0.fillStyle = bg0; h0.fillRect(0, 0, px, px);
+      h0.fillStyle = '#0e0614'; drawBat(h0, px * 0.5, px * 0.56, px * 0.78, 0.6); // morcego preso
+      h0.fillStyle = '#ffb02e'; [0.43, 0.57].forEach(function (ex) { h0.beginPath(); h0.arc(px * ex, px * 0.52, px * 0.03, 0, 7); h0.fill(); }); // olhos acesos
+      h0.restore();
+      h0.strokeStyle = '#f2b544'; h0.lineCap = 'round'; h0.shadowColor = '#ff9a2a'; h0.shadowBlur = px * 0.06;
+      h0.lineWidth = Math.max(1.5, px * 0.045);
+      for (var bi = 0; bi < 5; bi++) { var bx0 = px * (0.2 + bi * 0.15); h0.beginPath(); h0.moveTo(bx0, px * 0.3); h0.lineTo(bx0, px * 0.86); h0.stroke(); } // grades
+      h0.lineWidth = Math.max(2, px * 0.06);
+      h0.beginPath(); h0.moveTo(px * 0.14, px * 0.86); h0.lineTo(px * 0.86, px * 0.86); h0.stroke(); // base
+      h0.beginPath(); h0.moveTo(px * 0.17, px * 0.32); h0.quadraticCurveTo(px * 0.5, px * 0.08, px * 0.83, px * 0.32); h0.stroke(); // cúpula
+      h0.beginPath(); h0.arc(px * 0.5, px * 0.12, px * 0.05, 0, 7); h0.stroke(); // argola
+      h0.shadowBlur = px * 0.12; h0.strokeStyle = '#ffcf5a'; h0.lineWidth = Math.max(2, px * 0.05);
+      Themes.roundRect(h0, px * 0.07, px * 0.07, px * 0.86, px * 0.86, px * 0.18); h0.stroke(); // moldura brilhante
+      return (rareCache[key] = hc0);
+    }
     var c = document.createElement('canvas'); c.width = c.height = px; var g = c.getContext('2d'), m = px / 2, r = px * 0.42;
     g.save(); Themes.roundRect(g, px * 0.08, px * 0.08, px * 0.84, px * 0.84, px * 0.18); g.clip();
     if (t === 'r1') { // Vidro doce
@@ -512,9 +645,9 @@
     if (!rareModes()) return;
     state.pieces.forEach(function (p) {
       if (!p || p.rq) return; p.rq = 1;
-      var ev = eventNow(), t = null;
-      if (ev && Math.random() < (state.mode === 'event' ? ev.goalChance : ev.chance)) t = ev.rare; // v1.24: abóboras da Semana do Terror
-      else t = Season.rollRare(stats, state.score, Math.random);
+      var ev = state.mode === 'event' ? eventNow() : null, t = null; // v1.25: abóboras só no modo Evento
+      if (ev) t = Math.random() < ev.goalChance ? ev.rare : null; // v1.25 (dono): no modo Halloween só a gaiola — sem Vidro doce, Brasa ou Pérola
+      else { t = Season.rollRare(stats, state.score, Math.random); if (t === 'pk') t = null; } // gaiola do morcego nunca fora do evento
       if (t) p.rk = { k: Math.floor(Math.random() * SHAPES[p.s].cells.length), t: t };
     });
   }
@@ -531,6 +664,36 @@
   }
   function drawAnim(ctx, a, now, px) {
     if (a.type === 'morph') { drawMorph(ctx, a, now, px); return; }
+    if (a.type === 'batFlee') { // v1.25: morcego escapa voando, deixando um rastro de fumaça
+      var ft = (now - a.start) / a.dur; if (ft < 0 || ft >= 1) return;
+      var fcx = L.pad + (a.c + 0.5) * L.cell, fcy = L.pad + (a.r + 0.5) * L.cell, fdir = a.c < SIZE / 2 ? -1 : 1;
+      ctx.save(); ctx.globalAlpha = 0.35 * (1 - ft); ctx.fillStyle = '#9b4dff';
+      ctx.beginPath(); ctx.arc(fcx, fcy, L.cell * (0.3 + 0.5 * ft), 0, 7); ctx.fill();
+      ctx.globalAlpha = Math.min(1, 2 * (1 - ft)); ctx.fillStyle = '#1a0f24'; ctx.shadowColor = '#e8243c'; ctx.shadowBlur = L.cell * 0.25;
+      drawBat(ctx, fcx + fdir * L.cell * 3 * ft, fcy - L.cell * 3.2 * ft + Math.sin(ft * 14) * L.cell * 0.1, L.cell * 0.8, Math.abs(Math.sin(ft * 28)));
+      ctx.restore(); return;
+    }
+    if (a.type === 'pkbreak') { // v1.25: gaiola quebra — grades caem e o morcego sai voando
+      var pt = (now - a.start) / a.dur; if (pt >= 1) return;
+      if (state && state.board[a.r * SIZE + a.c] >= 0) return; // casa já tem peça nova
+      var pc = L.cell, pcx = L.pad + (a.c + 0.5) * pc, pcy = L.pad + (a.r + 0.5) * pc, pi;
+      ctx.save();
+      if (pt < 0.2) { var psh = pt > 0 ? Math.sin(pt * 140) * pc * 0.05 : 0; ctx.drawImage(rareSprite('pk', px), pcx - pc / 2 + psh, pcy - pc / 2, pc, pc); }
+      else {
+        var pu = (pt - 0.2) / 0.8;
+        ctx.strokeStyle = '#f2b544'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1.5, pc * 0.045); ctx.globalAlpha = Math.max(0, 1 - pu * 1.2);
+        for (pi = 0; pi < 5; pi++) { // grades caindo e girando
+          var side = pi - 2, gx2 = pcx + (pi * 0.15 - 0.3) * pc + side * pc * 0.5 * pu, gy2 = pcy + 0.08 * pc + pc * 1.8 * pu * pu;
+          ctx.save(); ctx.translate(gx2, gy2); ctx.rotate(side * pu * 1.4 + (pi % 2 ? 0.4 : -0.4) * pu);
+          ctx.beginPath(); ctx.moveTo(0, -pc * 0.28); ctx.lineTo(0, pc * 0.28); ctx.stroke(); ctx.restore();
+        }
+        var dir = (a.c < SIZE / 2) ? 1 : -1, bx = pcx + dir * pc * 2.4 * pu, by = pcy - pc * 2.8 * pu + Math.sin(pu * 12) * pc * 0.1; // morcego livre!
+        ctx.globalAlpha = Math.min(1, 2.5 * (1 - pu)); ctx.fillStyle = '#1a0f24'; ctx.shadowColor = '#ff9a2a'; ctx.shadowBlur = pc * 0.25;
+        drawBat(ctx, bx, by, pc * (0.7 + 0.3 * pu), Math.abs(Math.sin(pu * 26)));
+        if (a.seeds && pu < 0.6) { ctx.shadowBlur = 0; ctx.fillStyle = '#ffd36a'; for (pi = 0; pi < 6; pi++) { var sa = pi * 1.05 + a.c, sd = pc * (0.2 + 0.9 * pu); ctx.globalAlpha = 0.9 * (1 - pu / 0.6); ctx.beginPath(); ctx.arc(pcx + Math.cos(sa) * sd, pcy + Math.sin(sa) * sd, pc * 0.04, 0, 7); ctx.fill(); } } // faíscas
+      }
+      ctx.restore(); return;
+    }
     if (a.type === 'glint') { // v1.24: reflexo de vidro passando pelos blocos de vez em quando
       var gt = (now - a.start) / a.dur; if (gt < 0 || gt >= 1) return;
       var gc = L.cell, gp = L.pad, S2 = SIZE * gc, pos = -S2 * 0.5 + gt * S2 * 2;
@@ -602,10 +765,12 @@
     } else if (a.type === 'clear') {
       a.cells.forEach(function (o) {
         if (state && state.board[o.r * SIZE + o.c] >= 0) return; // v1.16: casa já ocupada por peça nova — não cobrir com a quebra antiga
+        if (o.pk) return; // v1.25: abóbora tem quebra própria (pkbreak)
         var tt = (now - a.start - o.d) / a.cellDur;
         var cx = pad + (o.c + 0.5) * cell, cy = pad + (o.r + 0.5) * cell;
         if (tt < 0) { ctx.drawImage(sprite(a.theme, o.color, px), cx - cell / 2, cy - cell / 2, cell, cell); return; }
         if (tt >= 1) return;
+        if (a.hw) { drawHauntBreak(ctx, sprite(a.theme, o.color, px), cx, cy, cell, tt, o.r * 8 + o.c + 1, a.ghost); return; }
         if (a.skin && Skins.drawBreak(ctx, sprite(a.theme, o.color, px), a.skin, a.theme, o.color, cx, cy, cell, tt, o.r * 8 + o.c + 1)) return;
         var e = tt * tt, sc = 1 - e * 0.85;
         ctx.globalAlpha = 1 - e;
@@ -675,7 +840,7 @@
       var ox = (w - shape.w * c) / 2, oy = (h - shape.h * c) / 2;
       shape.cells.forEach(function (sc) { ctx.drawImage(sprite(th, p.c, px), ox + sc[1] * c, oy + sc[0] * c, c, c); });
       if (p.sp && shape.cells[p.sp.k]) drawSpecialOn(ctx, p.sp.t, ox + shape.cells[p.sp.k][1] * c, oy + shape.cells[p.sp.k][0] * c, c, px);
-      if (p.rk && shape.cells[p.rk.k]) ctx.drawImage(rareSprite(p.rk.t, px), ox + shape.cells[p.rk.k][1] * c, oy + shape.cells[p.rk.k][0] * c, c, c);
+      if (p.rk && shape.cells[p.rk.k] && (p.rk.t !== 'pk' || state.mode === 'event')) ctx.drawImage(rareSprite(p.rk.t, px), ox + shape.cells[p.rk.k][1] * c, oy + shape.cells[p.rk.k][0] * c, c, c);
       if (deal) { slot.classList.remove('deal'); void slot.offsetWidth; slot.classList.add('deal'); }
     });
   }
@@ -936,26 +1101,50 @@
     if (snap) { lastSnap = snap; lastStatsSnap = statsSnap; }
     if (!res.lineCount) announce(T('Peça colocada.'));
     var now = animNow(), lvl = settings.anim, th = boardTheme(), geo = { cell: L.cell, pad: L.pad, size: L.size };
-    var colorOf = function (ci) { var p = pal(th); return p[ci % p.length]; };
+    var colorOf = function (ci) { if (evGame()) return ['#ff8a1f', '#9b4dff', '#ffb347', '#6a2fd1'][ci % 4]; var p = pal(th); return p[ci % p.length]; }; // v1.25: faíscas assombradas no evento
     Sound.placeSkin(curSkin());
     if (!res.lineCount) haptic('place'); // toque firme a cada peça encaixada
     // encaixe: pequena expansão e retorno + faíscas discretas
     if (lvl !== 'off') anims.push({ type: 'pop', cells: res.placed, color: res.color, theme: th, start: now, dur: lvl === 'full' ? 220 : 140 });
     if (partsOn()) anims.push(Fx.sparks(res.placed, colorOf(res.color), geo, now, anims));
+    if (evGame()) { // v1.25: álbum do evento — participação (selo), blocos vistos e mais abóboras numa partida
+      var evA = eventNow(), alb = stats.events[evA.id] = stats.events[evA.id] || { played: 1, seen: {}, pk: 0 };
+      alb.played = 1; alb.seen = alb.seen || {};
+      var hk = hwTile(curSkin(), boardTheme()); if (hk && !alb.seen[hk.key]) { alb.seen[hk.key] = 1; saveStats(); }
+    }
+    if (evGame()) { // v1.25 (dono): o morcego foge se a gaiola não for quebrada a tempo
+      state.evMoves = (state.evMoves || 0) + 1; state.pkAge = state.pkAge || {};
+      Object.keys(state.pkAge).forEach(function (k) { if (!state.rare || state.rare[k] !== 'pk') delete state.pkAge[k]; });
+      if (state.rare) Object.keys(state.rare).forEach(function (k) { if (state.rare[k] === 'pk' && state.pkAge[k] == null) state.pkAge[k] = state.evMoves; });
+      var fled = 0;
+      Object.keys(state.pkAge).forEach(function (k) {
+        if (state.evMoves - state.pkAge[k] < evFlee()) return;
+        delete state.pkAge[k]; delete state.rare[k]; fled++;
+        var fr = Math.floor(+k / SIZE), fc = +k % SIZE;
+        if (lvl !== 'off') anims.push({ type: 'batFlee', r: fr, c: fc, start: now + 150, dur: 1000 });
+        popup('🦇 ' + T('Fugiu!'), [fr, fc], 'pts-small', 0.4, false, 200);
+      });
+      if (fled) { later(function () { Sound.ghost && Sound.ghost(); }, 200); announce(T('Um morcego fugiu!')); }
+    }
     var pkGone = rareGone.filter(function (ri) { return lastRareKinds[ri] === 'pk'; }).length;
     if (pkGone) { // v1.24: Semana do Terror — abóboras limpas
       state.pk = (state.pk || 0) + pkGone;
+      var evP = eventNow(); if (evP && stats.events[evP.id] && state.pk > (stats.events[evP.id].pk || 0)) { stats.events[evP.id].pk = state.pk; saveStats(); }
       var evn = eventNow();
-      if (state.mode === 'event' && evn && !state.pkDone && state.pk >= evn.goal) {
-        state.pkDone = true; stats.rares = stats.rares || {}; stats.rares.pk = 1; saveStats();
-        reward('trophy', T('Desafio do evento concluído! 🎃'), T('A Abóbora agora é um bloco raro seu para sempre.'));
+      if (state.mode === 'event' && evn && !state.pkDone && state.pk >= evGoal()) {
+        state.pkDone = true; stats.rares = stats.rares || {}; stats.rares.pk = 1;
+        if (state.nightmare) { var evN = stats.events[evn.id] = stats.events[evn.id] || { played: 1, seen: {}, pk: 0 }; evN.nightmare = 1; }
+        saveStats();
+        if (state.nightmare) reward('trophy', T('Pesadelo vencido! 👹'), T('Você ganhou o {b}, guardado para sempre.', { b: T(evn.nightmare.badge) }));
+        else reward('trophy', T('Desafio do evento concluído! 🎃'), T('Você é Caçador de Morcegos! Ganhou a conquista e liberou a Fase Pesadelo.'));
         later(function () { Sound.record(); }, 400);
       }
     }
     if (rareGone.length) { // v1.24: limpar bloco raro faz festa (brilho branco + som de recompensa)
       rareGone.forEach(function (ri, n) { if (partsOn()) anims.push(Fx.sparks([[Math.floor(ri / SIZE), ri % SIZE]], '#ffffff', geo, now + 200 + n * 60, anims)); });
       later(function () { Sound.star && Sound.star(); }, 260);
-      popup('✨ ' + rareName(rareGone.length && lastRareKinds[rareGone[0]] || 'r1'), [Math.floor(rareGone[0] / SIZE), rareGone[0] % SIZE], 'pts-small', 0.6, false, 250);
+      var rareTxt = rareGone.filter(function (ri) { return lastRareKinds[ri] !== 'pk'; })[0]; // v1.25: abóbora já tem contador e quebra própria — sem texto extra
+      if (rareTxt != null) popup('✨ ' + rareName(lastRareKinds[rareTxt]), [Math.floor(rareTxt / SIZE), rareTxt % SIZE], 'pts-small', 0.6, false, 250);
     }
 
     if (res.gems && res.gems.length) { // v1.17: gemas coletadas — brilho, faíscas e "+1" na casa
@@ -987,9 +1176,10 @@
       // intensidade cresce com o número de linhas: 1 simples, 2 forte, 3+ especial
       // qualidade da jogada: linhas de uma vez + combo longo; tabuleiro limpo é o máximo
       var tier = res.boardClear ? 4 : Math.min(4, res.lineCount + (res.combo >= 4 ? 1 : 0)), intensity = Math.min(3, res.lineCount);
-      var charge = lvl === 'full' ? 170 : 0; // 1) linhas acendem e pulsam  2) quebram
+      var zen = state.mode === 'zen'; // v1.25: Zen tranquilo — só a quebra básica, sem moldura, partículas, flashes, tremor ou vibração especial
+      var charge = lvl === 'full' && !zen ? 170 : 0; // 1) linhas acendem e pulsam  2) quebram
       if (lvl !== 'off') {
-        var skinNow = curSkin(), custom = lvl === 'full' && Skins.isCustom(skinNow); // quebra própria (com tremor) só com animações completas
+        var skinNow = curSkin(), custom = lvl === 'full' && !zen && Skins.isCustom(skinNow); // quebra própria (com tremor) só com animações completas
         var stag = lvl === 'full' ? 22 : 0, cellDur = custom ? Skins.breakMs(skinNow) : lvl === 'full' ? 320 : 200, maxD = 0;
         var cells = res.cleared.map(function (o) {
           var d = (Math.abs(o.r - origin[0]) + Math.abs(o.c - origin[1])) * stag;
@@ -998,17 +1188,24 @@
         });
         if (charge) anims.push({ type: 'charge', cells: cells, glow: colorOf(res.color), start: now, dur: charge, sprite: null });
         // v1.21: feixe de luz atravessando cada linha limpa; vira arco-íris em várias linhas de uma vez ou combo ×3+
-        if (settings.fx !== 'off') anims.push({ type: 'beam', rows: res.rows.slice(), cols: res.cols.slice(), rainbow: res.lineCount >= 2 || res.combo >= 3,
+        if (settings.fx !== 'off' && !zen) anims.push({ type: 'beam', rows: res.rows.slice(), cols: res.cols.slice(), rainbow: res.lineCount >= 2 || res.combo >= 3,
           color: colorOf(res.color), start: now + charge * 0.5, dur: lvl === 'full' ? 520 : 360 });
-        anims.push({ type: 'clear', cells: cells, theme: th, skin: custom ? skinNow : null, start: now + charge, cellDur: cellDur, dur: maxD + cellDur });
-        if (partsOn() && !custom) anims.push(Fx.burst(res.cleared, colorOf, geo, now, intensity, anims, charge));
-        if (lvl === 'full' && res.lineCount >= 2) {
+        cells.forEach(function (o) { // v1.25: gaiolas da Semana do Terror quebram e soltam o morcego
+          var ri0 = o.r * SIZE + o.c; if (lastRareKinds[ri0] !== 'pk') return;
+          o.pk = true;
+          anims.push({ type: 'pkbreak', r: o.r, c: o.c, seeds: lvl === 'full' && !zen && settings.quality !== 'low', start: now + charge + o.d, dur: 900 });
+        });
+        var haunted = evGame() && lvl === 'full'; // v1.25: quebra assombrada (fumaça roxa e laranja, fantasmas sobem, morcegos voam)
+        if (haunted) { custom = false; cellDur = 560; }
+        anims.push({ type: 'clear', cells: cells, theme: th, hw: haunted, ghost: curSkin() === 'theme', skin: custom ? skinNow : null, start: now + charge, cellDur: cellDur, dur: maxD + cellDur });
+        if (partsOn() && !custom && !zen) anims.push(Fx.burst(res.cleared, colorOf, geo, now, intensity, anims, charge));
+        if (lvl === 'full' && res.lineCount >= 2 && !zen) {
           anims.push({ type: 'ring', x: L.pad + (origin[1] + 0.5) * L.cell, y: L.pad + (origin[0] + 0.5) * L.cell, reach: 4 + res.lineCount * 2,
             color: colorOf(res.color), start: now + charge, dur: 520 });
         }
       }
       // blocos reagem à jogada (hierarquia: 1 linha discreta → combo acende → várias linhas: onda → tabuleiro limpo: florada)
-      if (lvl === 'full' && settings.quality !== 'low') {
+      if (lvl === 'full' && settings.quality !== 'low' && !zen) {
         var filled = function () { var out = []; if (!state) return out; for (var i = 0; i < state.board.length; i++) if (state.board[i] >= 0) out.push({ r: Math.floor(i / SIZE), c: i % SIZE }); return out; };
         if (res.lineCount >= 2) anims.push({ type: 'wave', cellsFn: filled, r: origin[0], c: origin[1], reach: 9, color: '#ffffff', peak: Math.min(0.55, 0.28 + 0.09 * res.lineCount), start: now + charge, dur: 650 });
         if (res.combo >= 2) anims.push({ type: 'glowCells', cellsFn: filled, color: colorOf(res.color), peak: Math.min(0.42, 0.12 + 0.06 * res.combo), start: now + charge + 120, dur: 520 });
@@ -1017,13 +1214,13 @@
       }
       var breakSkin = curSkin();
       // v1.23 (menos poluição sonora): escala + UM detalhe — combo (se houver), senão a quebra do estilo, senão o "boom"
-      if (res.combo >= 3 && eventNow() && Math.random() < 0.5) later(function () { Sound.ghost(); }, 300); // v1.24: fantasma no combo (evento)
+      if (res.combo >= 3 && evGame() && Math.random() < 0.5) later(function () { Sound.ghost(); }, 300); // v1.24: fantasma no combo (evento)
     if (res.combo >= 2) { Sound.clear(res.lineCount, res.combo, null); Sound.combo(res.combo); }
       else if (Sound.hasBreak(breakSkin)) { Sound.clear(res.lineCount, res.combo, null); later(function () { Sound.breakSkin(breakSkin, res.lineCount); }, charge * 0.6); }
       else Sound.clear(res.lineCount, res.combo, 'boom');
-      if (res.boardClear) haptic('celebrate'); else if (res.combo >= 2) haptic('combo', res.combo); else haptic(res.lineCount > 1 ? 'lines' : 'line');
-      if (lvl === 'full' && (res.lineCount >= 2 || res.boardClear || res.combo >= 5)) later(function () { shake(res.boardClear || res.lineCount >= 3 || res.combo >= 8 ? 'big' : ''); }, charge);
-      if (lvl === 'full' && settings.fx === 'full' && (res.lineCount >= 3 || res.boardClear)) { // v1.24: câmera lenta na jogada épica
+      if (zen) haptic('line'); else if (res.boardClear) haptic('celebrate'); else if (res.combo >= 2) haptic('combo', res.combo); else haptic(res.lineCount > 1 ? 'lines' : 'line');
+      if (lvl === 'full' && !zen && (res.lineCount >= 2 || res.boardClear || res.combo >= 5)) later(function () { shake(res.boardClear || res.lineCount >= 3 || res.combo >= 8 ? 'big' : ''); }, charge);
+      if (lvl === 'full' && settings.fx === 'full' && !zen && (res.lineCount >= 3 || res.boardClear)) { // v1.24: câmera lenta na jogada épica
         slowMo(650, 0.3, Math.max(0, charge - 40));
         later(function () { boardBox.classList.remove('epic'); void boardBox.offsetWidth; boardBox.classList.add('epic'); }, Math.max(0, charge - 40));
       }
@@ -1039,17 +1236,17 @@
       if (res.combo >= 2 && !res.boardClear) { // combo em destaque: número grande + pontos extras do combo; combos altos ganham cor e confete
         var cbCls = 'combo-big' + (res.combo >= 10 ? ' mega' : res.combo >= 5 ? ' hot' : '');
         popup(T('Combo <b>{n}</b>', { n: Math.floor(+res.combo) || 0 }) + (res.comboBonus > 0 ? ' <small>+' + fmt(Math.floor(+res.comboBonus) || 0) + '</small>' : '')  /* v1.21.2: só números entram no HTML */, [2.6, mid], cbCls, 0, true, 60);
-        if (res.combo >= 5 && partsOn() && !res.boardClear) anims.push(Fx.confetti(pal(th), geo, now + charge + 120, Math.min(70, 20 + res.combo * 4), anims));
+        if (res.combo >= 5 && partsOn() && !res.boardClear && !zen) anims.push(Fx.confetti(evGame() ? ['#ff8a1f', '#9b4dff', '#ffb347', '#6a2fd1', '#2a1a3a'] : pal(th), geo, now + charge + 120, Math.min(70, 20 + res.combo * 4), anims));
         var rec4 = (state.recent || []).slice(-4), streak4 = rec4.length === 4 && rec4.every(function (v) { return v > 0; });
-        if (lvl === 'full' && settings.quality !== 'low' && (res.combo >= 5 || streak4)) // efeito temporário: faixas de cor atravessando os blocos
+        if (lvl === 'full' && settings.quality !== 'low' && !zen && (res.combo >= 5 || streak4)) // efeito temporário: faixas de cor atravessando os blocos
           anims.push({ type: 'prism', cellsFn: function () { var o = []; if (!state) return o; for (var i = 0; i < state.board.length; i++) if (state.board[i] >= 0) o.push({ r: Math.floor(i / SIZE), c: i % SIZE }); return o; },
             start: now + charge + 200, dur: 1400, strong: res.combo >= 7 });
       }
       if (res.boardClear) { // recompensa especial: contorno brilhando, confete e bônus
         // v1.23: limpeza perfeita é a única mensagem grande da jogada (o bônus vai junto, pequeno)
         popup(T('Limpeza perfeita!') + '<br><small>+' + fmt(Math.floor(+res.clearPts) || 0) + '</small>', [4.2, mid], 'big clear', 0, true, 200);
-        if (lvl !== 'off') anims.push({ type: 'boardGlow', color: th.accent, start: now + charge, dur: 1300 });
-        if (partsOn()) anims.push(Fx.confetti(pal(th), geo, now + charge, 80, anims));
+        if (lvl !== 'off' && !zen) anims.push({ type: 'boardGlow', color: th.accent, start: now + charge, dur: 1300 });
+        if (partsOn() && !zen) anims.push(Fx.confetti(pal(th), geo, now + charge, 80, anims));
         later(function () { Sound.boardClear(); }, 250);
       }
       announce((res.boardClear ? T('Limpeza perfeita!') + ' ' : '') + (word ? word + ' ' : '') +
@@ -1132,7 +1329,8 @@
       return;
     }
     // 2) transformação dos blocos
-    var d = settings.surprise && settings.blocks === 'classic' ? Surprise.decide(look, res, Object.assign({ base: settings.blocks }, evCtx), Skins.ids, Math.random) : null;
+    var skinPool = evGame() && window.MZHalloweenArt ? Skins.ids.filter(function (id) { return window.MZHalloweenArt.keys.indexOf(id) !== -1; }) : Skins.ids; // v1.25 (dono): no modo Halloween só viram estilos que têm versão de Halloween
+    var d = settings.surprise && settings.blocks === 'classic' ? Surprise.decide(look, res, Object.assign({ base: settings.blocks }, evCtx), skinPool, Math.random) : null;
     if (d) {
       look.since = 0; look.left = d.left;
       look.last = look.last.concat(d.skin).slice(-4);
@@ -1156,7 +1354,10 @@
     if (ev.id === 'combo') return T('Combo ×{n} extraordinário!', { n: ev.value });
     return T('Transformação!');
   }
-  function skinName(id) { var s = Skins.LIST.filter(function (x) { return x.id === id; })[0]; return s ? T(s.name) : id; }
+  function skinName(id) {
+    var evS = evGame() && eventNow().album && eventNow().album.filter(function (a) { return a[0] === id; })[0]; if (evS) return T(evS[1]); // v1.25: nome de Halloween no evento
+    var s = Skins.LIST.filter(function (x) { return x.id === id; })[0]; return s ? T(s.name) : id;
+  }
   function applyLook(skin, origin, d) {
     if (!state || !state.look) return;
     var from = curSkin();
@@ -1218,7 +1419,13 @@
 
 
 
+  var bigUntil = 0; // v1.25: uma mensagem grande por vez — a próxima espera a anterior sumir
   function popup(text, origin, cls, dy, html, delayMs) {
+    if (/(^|\s)(praise|combo-big|big|level)(\s|$)/.test(cls || '')) {
+      var nowMs = Date.now(), at = nowMs + (delayMs || 0);
+      if (at < bigUntil) { if (bigUntil - nowMs > 3000) return; delayMs = bigUntil - nowMs; at = bigUntil; } // fila longa demais: pula
+      bigUntil = at + (settings.anim === 'full' ? 1050 : 950);
+    }
     var el = document.createElement('div');
     el.className = 'popup' + (cls ? ' ' + cls : '');
     if (html) el.innerHTML = text; else el.textContent = text;
@@ -1263,8 +1470,14 @@
    *  quando a partida está quase perdida (no máximo 1 das peças da bandeja cabe, ou tabuleiro 75%+ cheio). Só aparência. */
   function updateBoardMood() {
     var b = $('#board'); if (!b) return;
-    var on = !!state && screenIs('game') && modeOf() !== 'tutorial' && !state.over, k = on ? state.combo || 0 : 0;
-    b.classList.toggle('combo-1', k >= 3 && k < 5); b.classList.toggle('combo-2', k >= 5 && k < 10); b.classList.toggle('combo-3', k >= 10);
+    var on = !!state && screenIs('game') && modeOf() !== 'tutorial' && !state.over, k = on && modeOf() !== 'zen' ? state.combo || 0 : 0; // v1.25: Zen sem moldura
+    // v1.25: moldura de combo em 5 níveis (×2 brilho leve, ×3 faíscas, ×5 moldura visível, ×7 ondas, ×10 fogo), na cor do visual
+    b.classList.toggle('combo-a', k === 2); b.classList.toggle('combo-b', k >= 3 && k < 5); b.classList.toggle('combo-c', k >= 5 && k < 7);
+    b.classList.toggle('combo-d', k >= 7 && k < 10); b.classList.toggle('combo-e', k >= 10);
+    var leftC = on ? Logic.CONFIG.combo.window - (state.movesSinceClear || 0) : 9;
+    b.classList.toggle('fading', k >= 2 && leftC <= 1); // falta 1 peça: a moldura apaga devagar
+    b.style.setProperty('--frame-rgb', evGame() ? '255,122,26' : hexRgb(boardTheme().accent)); // v1.25: no evento a moldura é laranja e roxa (assombrada)
+    b.classList.toggle('haunt', evGame());
     var danger = false;
     if (on) {
       var left = state.pieces.filter(function (p) { return !!p; }).length, fit = 0, filled = 0;
@@ -1276,6 +1489,7 @@
     b.classList.toggle('danger', danger);
     b.classList.toggle('on-fire', on && !danger && k >= 10 && settings.anim !== 'off'); // v1.24: fogo no combo ×10
   }
+  function hexRgb(h) { var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(h || ''); return m ? parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) : '242,201,76'; }
   function updateComboChip() {
     updateBoardMood();
     var chip = $('#combo-chip'), win = Logic.CONFIG.combo.window;
@@ -1393,8 +1607,16 @@
     onTrophy: function () { Sound.record(); },
     place: function (el) { // na partida, logo abaixo do placar; com uma janela aberta, embaixo da tela
       var low = overlayOpen();
+      var inGame = !low && screens.game.classList.contains('active');
+      el.classList.toggle('ingame', inGame);
       el.classList.toggle('bottom', low);
-      el.style.top = !low && screens.game.classList.contains('active') ? Math.round($('#score').getBoundingClientRect().bottom + 6) + 'px' : '';
+      el.style.top = '';
+      if (inGame) { // v1.25: logo abaixo do placar, mas sem cobrir as primeiras linhas do tabuleiro
+        var top = Math.round($('#score').getBoundingClientRect().bottom + 6), boardTop = boardBox.getBoundingClientRect().top;
+        top = Math.min(top, Math.round(boardTop - el.offsetHeight - 4));
+        if (top < 4) { el.classList.add('bottom'); return; } // tela muito baixa: vai para baixo
+        el.style.top = top + 'px';
+      }
     }
   });
   function toast(title, text, kind) { toasts.show(title, text, kind); }
@@ -1428,6 +1650,9 @@
   // v1.24: Temporada 1 — recordes zeram; o recorde antigo fica guardado como "lendário" (js/season.js)
   var seasonNews = null;
   var forcedEvent = /[?&]debug\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? (/[?&]event=([a-z]+)/.exec(location.search) || [])[1] : null;
+  function evGoal() { var ev = eventNow(); return !ev ? 40 : state && state.nightmare ? ev.nightmare.goal : ev.goal; } // v1.25: meta do desafio (normal ou Pesadelo)
+  function evFlee() { var ev = eventNow(); return !ev ? 6 : state && state.nightmare ? ev.nightmare.flee : ev.flee; }
+  function evGame() { return !!(state && state.mode === 'event' && eventNow()); } // v1.25: conteúdo do evento só dentro do modo Evento
   function eventNow() { return Events.current(today(), forcedEvent); } // v1.24: evento por data (Semana do Terror)
   (function startSeason() {
     var r = Season.startSeason(stats);
@@ -1562,7 +1787,7 @@
     locked = false; anims = []; drag = null; lastSnap = null; lastStatsSnap = null; tutTarget = null;
     dragCanvas.hidden = true;
     slots.forEach(function (s) { s.classList.remove('dragging', 'shake', 'kb-selected'); });
-    fx.innerHTML = '';
+    fx.innerHTML = ''; bigUntil = 0;
     $('#coach').hidden = true;
     closeAllOverlays();
   }
@@ -1610,8 +1835,8 @@
     if (!state.themeId) state.themeId = THEMES[0].id; // toda partida nova começa no visual Clássico
     themeIdx = Themes.indexOfId(state.themeId);
     applyTheme(themeIdx, false);
-    if (state.rare && typeof state.rare === 'object') Object.keys(state.rare).forEach(function (k) { var i = +k; if (!(Number.isInteger(i) && i >= 0 && i < SIZE * SIZE) || !/^(r[1-3]|pk)$/.test(state.rare[k])) delete state.rare[k]; }); else delete state.rare;
-    state.pieces.forEach(function (p) { if (p && p.rk && !(/^(r[1-3]|pk)$/.test(p.rk.t) && SHAPES[p.s].cells[p.rk.k])) delete p.rk; });
+    if (state.rare && typeof state.rare === 'object') Object.keys(state.rare).forEach(function (k) { var i = +k; if (!(Number.isInteger(i) && i >= 0 && i < SIZE * SIZE) || !/^(r[1-3]|pk)$/.test(state.rare[k]) || (state.rare[k] === 'pk' && state.mode !== 'event')) delete state.rare[k]; }); else delete state.rare; // v1.25: gaiola do morcego só no modo Evento (partidas salvas antigas perdem a abóbora/gaiola)
+    state.pieces.forEach(function (p) { if (p && p.rk && (!(/^(r[1-3]|pk)$/.test(p.rk.t) && SHAPES[p.s].cells[p.rk.k]) || (p.rk.t === 'pk' && state.mode !== 'event'))) delete p.rk; });
     tagRares();
     displayedScore = state.score;
     $('#score').textContent = fmt(state.score);
@@ -1686,11 +1911,11 @@
       $('#goal-progress').style.width = Math.min(100, state.score / 50).toFixed(1) + '%';
       $('#goal-extra').textContent = T('Faça {n} pontos', { n: fmt(5000) });
     } else if (m === 'event') { // v1.24: Semana do Terror
-      var evg = eventNow(), goal = evg ? evg.goal : 25, got = Math.min(goal, state.pk || 0);
+      var goal = evGoal(), got = Math.min(goal, state.pk || 0);
       gb.hidden = false;
-      $('#goal-text').textContent = '🎃 ' + T('Desafio do evento');
+      $('#goal-text').textContent = state.nightmare ? '👹 ' + T('Pesadelo') : '🎃 ' + T('Desafio do evento');
       $('#goal-progress').style.width = (100 * got / goal).toFixed(1) + '%';
-      $('#goal-extra').textContent = state.pkDone ? T('Concluído!') : T('{a}/{b} abóboras', { a: got, b: goal });
+      $('#goal-extra').textContent = state.pkDone ? T('Concluído!') : T('{a}/{b} morcegos', { a: got, b: goal });
     } else if (m === 'weekly') { // v1.24: posição no placar da galera
       gb.hidden = false;
       var gl = galera().list.filter(function (x) { return !x.me; }), ahead = gl.filter(function (x) { return x.score > state.score; }).sort(function (a, b) { return a.score - b.score; })[0];
@@ -1752,12 +1977,12 @@
   }
 
   function comboText(n) { return n >= 2 ? '×' + n : '—'; }
-  function canUndoNow() { return !!lastSnap && state && state.undoLeft > 0 && modeOf() !== 'daily' && modeOf() !== 'weekly'; }
+  function canUndoNow() { return !!lastSnap && state && state.undoLeft > 0 && modeOf() !== 'daily' && modeOf() !== 'weekly' && !state.nightmare; } // v1.25: Pesadelo sem desfazer
 
   function showGameOver() {
     var m = modeOf(), score = state.score;
     Sound.gameover();
-    if (eventNow()) later(function () { Sound.howl(); }, 500); // v1.24: uivo no fim de partida (evento)
+    if (evGame()) later(function () { Sound.howl(); }, 500); // v1.24: uivo no fim de partida (evento)
     haptic('gameover');
     if (m === 'zen') {
       showResult({
@@ -2238,7 +2463,7 @@
   }
   function show(name) {
     Object.keys(screens).forEach(function (k) { screens[k].classList.toggle('active', k === name); });
-    var evl = eventNow(); $('#event-layer').hidden = !evl || settings.anim === 'off'; document.body.classList.toggle('ev-terror', !!evl); // v1.24: lua e morcegos
+    var evl = eventNow() && (name !== 'game' || evGame()); $('#event-layer').hidden = !evl || settings.anim === 'off'; document.body.classList.toggle('ev-terror', !!evl); // v1.24: lua e morcegos
     if (name !== 'home' && $('#news-bar')) $('#news-bar').hidden = true; // v1.24: barra de novidades só na tela inicial
     tipsFor(name);
     if (name === 'home') refreshHome();
@@ -2256,7 +2481,11 @@
     var repush = function () { try { history.pushState({ gb: 1 }, ''); } catch (e) {} };
     var open = document.querySelector('.overlay:not([hidden])');
     // v1.16: fecha pela função normal (antes só escondia a janela e a tela do jogo ficava travada — 'inert' — sem aceitar toques)
-    if (open && open.id !== 'ov-over') { closeOverlay('#' + open.id); repush(); return; }
+    if (open && open.id !== 'ov-over') {
+      closeOverlay('#' + open.id);
+      if (open.id === 'ov-settings' && settingsReturn) { openOverlay(settingsReturn); settingsReturn = null; } // v1.25: Pausa → Configurações → voltar = Pausa
+      repush(); return;
+    }
     if (screenIs('game')) { if (!locked && modeOf() !== 'tutorial') openOverlay('#ov-pause'); repush(); return; }
     show('home');
   });
@@ -2437,7 +2666,7 @@
 
   /** Desenha a miniatura (2×2 blocos) de um estilo num canvas de 88×88. */
   function drawSkinPreview(cv, skinId) {
-    var th = THEMES[themeIdx], ctx = cv.getContext('2d');
+    var th = THEMES[0], ctx = cv.getContext('2d'); // v1.25: cada estilo mostra as próprias cores (antes pegava o visual da última partida e ficava tudo igual)
     ctx.clearRect(0, 0, 88, 88);
     ctx.fillStyle = th.board; ctx.fillRect(0, 0, 88, 88);
     [[0, 0, 0], [44, 0, 2], [0, 44, 4], [44, 44, 5]].forEach(function (p) { ctx.drawImage(sprite(th, p[2], 44, skinId), p[0], p[1], 44, 44); });
@@ -2613,10 +2842,16 @@
   function openEvent() { // v1.24: Desafio do evento (Semana do Terror)
     var ev = eventNow(); if (!ev) return;
     showDialog({ title: ev.icon + ' ' + T(ev.name), list: [
-      T('Limpe {n} abóboras 🎃 numa partida só.', { n: ev.goal }), T('As abóboras aparecem bem mais neste desafio.'),
-      stats.rares && stats.rares.pk ? T('Você já ganhou a Abóbora! Jogue de novo por diversão.') : T('Prêmio: a Abóbora vira um bloco raro seu para sempre.'), T('O evento acaba domingo, 8/11.')],
-      buttons: [{ label: T('Jogar'), cls: 'primary big', fn: function () { closeDialog(); confirmReplace('event', function () { startGame('event'); }, function () { startGame('event', { resume: true }); }); } },
-        { label: T('Agora não'), cls: 'ghost-dark', fn: closeDialog }] });
+      T('Liberte {n} morcegos 🦇 numa partida só.', { n: ev.goal }), T('Quebre as gaiolas para soltar os morcegos. Elas aparecem bem mais neste desafio.'),
+      T('Corra: se a gaiola não quebrar em {n} jogadas, o morcego foge.', { n: ev.flee }),
+      stats.rares && stats.rares.pk ? T('Você já é Caçador de Morcegos! Jogue de novo por diversão.') : T('Prêmio: a conquista Caçador de Morcegos, para sempre.'), T('O evento acaba domingo, 8/11.')],
+      buttons: [{ label: T('Jogar'), cls: 'primary big', fn: function () { closeDialog(); confirmReplace('event', function () { startGame('event'); }, function () { startGame('event', { resume: true }); }); } }]
+        .concat(stats.rares && stats.rares.pk ? [{ label: '👹 ' + T('Fase Pesadelo'), cls: 'confirm', fn: function () { // v1.25: liberada depois de vencer o desafio
+          closeDialog(); showDialog({ title: '👹 ' + T('Fase Pesadelo'), list: [T('Liberte {n} morcegos numa partida só.', { n: ev.nightmare.goal }), T('Sem desfazer e sem reviver.'),
+            T('O morcego foge em {n} jogadas.', { n: ev.nightmare.flee }), T('Prêmio: {b}, guardado para sempre.', { b: T(ev.nightmare.badge) })],
+            buttons: [{ label: T('Encarar o Pesadelo'), cls: 'primary big', fn: function () { closeDialog(); startGame('event'); state.nightmare = true; state.undoLeft = 0; saveGame(); updateHud(); } },
+              { label: T('Agora não'), cls: 'ghost-dark', fn: closeDialog }] }); } }] : [])
+        .concat([{ label: T('Agora não'), cls: 'ghost-dark', fn: closeDialog }]) });
   }
   $('#btn-bug').addEventListener('click', function () { Sound.tap(); openBugReport(); });
   $('#btn-bug-pause').addEventListener('click', function () { Sound.tap(); closeOverlay('#ov-pause'); openBugReport(); });
@@ -2789,6 +3024,7 @@
     get anims() { return anims.length; },
     get stats() { return stats; },
     get perf() { return perf; },
+    mood: function () { updateComboChip(); requestRender(); }, // v1.25: testes da moldura de combo
     place: function (slot, r, c) { return commitPlace(slot, r, c); },
     get settings() { return settings; },
     /** Onde o dedo precisa ir (considerando a sensibilidade) para a peça cair em (row, col). Só para testes. */
