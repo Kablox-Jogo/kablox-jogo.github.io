@@ -15,12 +15,15 @@
         ['cheese', 'Queijo Estranho'], ['wool', 'Lã Sombria'], ['rainbow', 'Arco-íris Hallow'], ['lava', 'Lava Hallow'], ['gold', 'Ouro Amaldiçoado'],
         ['circuit', 'Circuito Hallow'], ['stained', 'Vitral Sombrio'], ['v-verdeagua', 'Verde-água Hallow'], ['v-brancoazul', 'Branco e Azul Hallow'], ['v-terra', 'Marrom e Laranja Hallow']] }
   ];
+  // v1.26: eventos anunciados ("em breve") ainda sem conteúdo — aparecem na tela Eventos, mas não ligam nada no jogo
+  LIST.push({ id: 'natal2026', from: '2026-12-01', to: '2026-12-31', name: 'Natal', icon: '🎄', soon: true });
   function current(dayKey, force) {
-    if (force) return LIST.filter(function (e) { return e.id.indexOf(force) === 0; })[0] || null;
-    return LIST.filter(function (e) { return dayKey >= e.from && dayKey <= e.to; })[0] || null;
+    if (force) return LIST.filter(function (e) { return !e.soon && e.id.indexOf(force) === 0; })[0] || null;
+    return LIST.filter(function (e) { return !e.soon && dayKey >= e.from && dayKey <= e.to; })[0] || null;
   }
+  function stateOf(e, dayKey) { return dayKey < e.from ? 'future' : dayKey > e.to ? 'ended' : 'active'; } // futuro / ativo / encerrado
   function byId(id) { return LIST.filter(function (e) { return e.id === id; })[0] || null; }
-  var api = { LIST: LIST, current: current, byId: byId };
+  var api = { LIST: LIST, current: current, byId: byId, stateOf: stateOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MZEvents = api;
 })(this);

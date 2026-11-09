@@ -993,3 +993,87 @@ body.ev-terror .bg-layer.on { filter: hue-rotate(-25deg) saturate(1.15); }
 /* v1.25: álbum do evento */
 .ev-badge { font-weight: 800; }
 .ev-badge.got { color: #ffb347; }
+
+/* v1.25.1 (dono): Desafios com cara de botão — o desafio do dia é um cartão de jogar; missões são só informação */
+.m-sec.hero-daily { border: 2px solid var(--accent); background: linear-gradient(160deg, rgba(255,210,60,.16), rgba(255,255,255,.03) 55%); box-shadow: 0 0 22px rgba(255,200,40,.18); }
+.m-sec.hero-daily .btn.primary { background: var(--accent); color: var(--accent-ink); box-shadow: 0 5px 0 rgba(0,0,0,.25); font-weight: 900; }
+.missions-sec .mission-list li { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.12); }
+.mission-top > .mission-prize { flex: none; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: rgba(255,210,60,.16); color: var(--accent); }
+.mission-prize.got { background: rgba(80,200,120,.18); color: #7be3a0; }
+.ch-item { cursor: pointer; transition: transform .12s, box-shadow .2s; }
+.ch-item:not(.locked):active { transform: scale(.97); }
+.ch-item .stars { margin-top: 4px; }
+.ch-item .ch-text small { display: block; }
+.ch-go { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.1); color: var(--text); font-size: 15px; font-weight: 900; }
+.ch-play { flex: none; padding: 9px 14px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 900; font-size: 14px; white-space: nowrap; box-shadow: 0 3px 0 rgba(0,0,0,.25); }
+.ch-item.next { box-shadow: 0 0 0 2.5px var(--accent), 0 0 18px rgba(255,200,40,.25); }
+body.anim-full .ch-item.next .ch-play { animation: bump 1.6s ease-in-out infinite; }
+
+/* v1.26: barra de ajudas (Martelo, Girar, Dica) */
+.helpers { display: flex; justify-content: center; gap: 12px; flex: none; margin-top: -2px; }
+.helper { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 4px 14px 4px 12px; border-radius: 14px; border: 0; cursor: pointer;
+  background: var(--panel); box-shadow: inset 0 0 0 1px var(--panel-edge); color: var(--text); font: inherit; font-size: 18px; }
+.helper b { font-size: 14px; font-weight: 900; color: var(--accent); min-width: 1ch; }
+.helper.empty { opacity: .45; }
+.helper.on { box-shadow: 0 0 0 2.5px var(--accent), 0 0 14px rgba(255,200,40,.45); background: rgba(255,210,60,.18); }
+.helper:active { transform: scale(.95); }
+#board-box.hammer-mode #board { cursor: crosshair; box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 3px var(--accent); }
+#tray.rotate-mode .slot:not(.empty) { box-shadow: inset 0 0 0 2.5px var(--accent); border-radius: 18px; }
+.slot.hinted { box-shadow: inset 0 0 0 3px var(--accent), 0 0 16px rgba(255,200,40,.45); border-radius: 18px; }
+@media (orientation: landscape) and (max-height: 520px) { .helpers { position: absolute; left: calc(env(safe-area-inset-left) + 8px); bottom: calc(env(safe-area-inset-bottom) + 8px); flex-direction: column; } }
+@media (max-height: 640px) { .helper { min-height: 34px; font-size: 16px; } }
+
+/* v1.26: tela inicial com 3 modos (Jogar = Clássico; cartões Zen e Eventos) + tela Eventos */
+.mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-top: 2px; }
+.mode-card-btn { position: relative; display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 12px; border: 0; border-radius: 16px; cursor: pointer; text-align: left;
+  color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--panel-edge), 0 4px 0 rgba(0,0,0,.25); }
+.mode-card-btn.zen { background: linear-gradient(160deg, #2f8f6b, #1d5c48); }
+.mode-card-btn.events { background: linear-gradient(160deg, #7a3fd1, #4a2290); }
+.mode-card-btn:active { transform: translateY(2px); box-shadow: inset 0 0 0 1px var(--panel-edge), 0 2px 0 rgba(0,0,0,.25); }
+.mode-card-btn .mc-ico { font-size: 26px; flex: none; }
+.mc-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.mc-txt strong { font-size: 17px; font-weight: 900; }
+.mc-txt small { font-size: 12.5px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mode-card-btn .tile-badge { top: -6px; right: -4px; }
+.ev-soon { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.12); }
+.ev-soon .mc-ico { font-size: 26px; } .ev-soon .mc-txt { flex: 1; } .ev-lock { opacity: .6; }
+.ev-album-title { margin: 8px 4px 0; font-size: 18px; font-weight: 900; color: var(--text); }
+.ev-empty { color: var(--muted); padding: 0 4px; }
+
+/* v1.26: botão principal sempre amarelo nas telas de menu (antes alguns ficavam apagados no tema escuro) */
+.menu-body .btn.primary { background: var(--accent); color: var(--accent-ink); box-shadow: 0 5px 0 rgba(0,0,0,.25); font-weight: 900; }
+
+/* v1.26: blocos lendários — tela cheia ao liberar + galeria na Coleção */
+.legend-ov { background: radial-gradient(circle at 50% 40%, rgba(90,50,160,.92), rgba(6,4,16,.97) 70%); }
+.legend-ov .card { background: transparent; box-shadow: none; max-width: 360px; }
+.legend-kicker { margin: 0; font-size: 14px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: #ffd36b; }
+.legend-art { width: 170px; height: 170px; display: block; margin: 8px auto 4px; }
+#legend-card h2 { margin: 2px 0 6px; font-size: 28px; font-weight: 900; color: #fff; text-shadow: 0 0 18px rgba(255,210,120,.55); }
+.legend-text { margin: 0 0 16px; color: rgba(255,255,255,.85); font-size: 15px; line-height: 1.4; }
+.leg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.leg-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 14px; text-align: center; background: rgba(0,0,0,.18); box-shadow: inset 0 0 0 1.5px rgba(255,211,107,.35); }
+.leg-item canvas { width: 64px; height: 64px; }
+.leg-item strong { font-size: 13px; line-height: 1.1; }
+.leg-item small { font-size: 11.5px; color: var(--muted); line-height: 1.15; }
+.leg-item.locked { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.1); }
+.leg-lock { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 13px; background: repeating-linear-gradient(135deg, rgba(255,255,255,.06) 0 6px, rgba(255,255,255,.02) 6px 12px); font-size: 26px; opacity: .8; }
+
+/* v1.26: Zen novo — sem placar, jardim + quadro no lugar dos pontos, fundo pastel que muda devagar */
+#screen-game.zen-mode .score-big, #screen-game.zen-mode .theme-bar { display: none; }
+.zen-bar { display: flex; gap: 10px; align-items: stretch; width: min(100%, 460px); margin: 4px auto 2px; padding: 0 12px; box-sizing: border-box; }
+.zen-bar[hidden] { display: none; }
+#zen-garden { flex: 1; min-width: 0; height: 72px; border-radius: 14px; }
+#zen-art { flex: none; width: 72px; height: 72px; }
+#zen-garden.grow { animation: zen-grow 1.6s ease-out; }
+@keyframes zen-grow { 0% { filter: brightness(1); } 30% { filter: brightness(1.35) drop-shadow(0 0 8px rgba(190,255,200,.6)); } 100% { filter: brightness(1); } }
+#screen-game.zen-mode { isolation: isolate; }
+#screen-game.zen-mode::before, #screen-game.zen-mode::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+#screen-game.zen-mode::before { background: linear-gradient(160deg, rgba(255,190,210,.42), rgba(200,180,255,.32) 55%, rgba(170,220,255,.34)); }
+#screen-game.zen-mode::after { background: linear-gradient(200deg, rgba(190,245,210,.42), rgba(255,230,180,.32) 55%, rgba(255,200,230,.34)); animation: zen-tint 40s ease-in-out infinite alternate; }
+@keyframes zen-tint { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #screen-game.zen-mode::after { animation: none; opacity: .5; } }
+body.anim-off #screen-game.zen-mode::after, body.q-low #screen-game.zen-mode::after { animation: none; opacity: .5; }
+.zen-garden-big { width: 100%; height: 110px; display: block; }
+.art-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 8px; }
+.art-item { width: 100%; aspect-ratio: 1; display: block; }
+@media (max-height: 640px) { #zen-garden, #zen-art { height: 56px; } #zen-art { width: 56px; } }

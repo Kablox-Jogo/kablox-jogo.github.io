@@ -107,13 +107,10 @@
           <span class="streak" id="home-streak" hidden>🔥 <b id="home-streak-n">0</b></span>
           <span class="x2" id="home-x2" hidden data-i18n>XP ×2</span>
         </div>
-        <div class="event-banner" id="event-banner" hidden><span id="event-title">🎃 Semana do Terror</span><button class="btn small primary" id="btn-event" data-i18n>Desafio do evento</button></div>
         <button id="btn-play" class="bk bk-yellow bk-big play-btn"><svg width="30" height="30" aria-hidden="true"><use href="#i-play"/></svg><span data-i18n>Jogar</span><small id="play-mode"></small></button>
-        <div class="mode-pick" id="mode-pick" role="radiogroup" aria-label="Modo de jogo" data-i18n-aria>
-          <button data-mode="classic" role="radio" aria-checked="true"><svg aria-hidden="true"><use href="#i-crown"/></svg><span data-i18n>Clássico</span></button>
-          <button data-mode="zen" role="radio" aria-checked="false"><svg aria-hidden="true"><use href="#i-leaf"/></svg><span data-i18n>Zen</span></button>
-          <button data-mode="weekly" role="radio" aria-checked="false"><svg aria-hidden="true"><use href="#i-trophy"/></svg><span data-i18n>Semana</span></button>
-          <button data-mode="event" role="radio" aria-checked="false" hidden><span aria-hidden="true">🎃</span><span data-i18n>Evento</span></button>
+        <div class="mode-cards"><!-- v1.26 (dono): três modos — Clássico (botão grande), Zen e Eventos -->
+          <button class="mode-card-btn zen" id="btn-zen"><span class="mc-ico" aria-hidden="true">🌿</span><span class="mc-txt"><strong data-i18n>Zen</strong><small id="zen-sub" data-i18n>No seu ritmo</small></span></button>
+          <button class="mode-card-btn events" id="btn-events" data-go="events"><span class="mc-ico" id="events-ico" aria-hidden="true">🎉</span><span class="mc-txt"><strong data-i18n>Eventos</strong><small id="events-sub"></small></span><em class="tile-badge" id="badge-events" hidden data-i18n>NOVO</em></button>
         </div>
         <nav class="home-grid" aria-label="Menu principal" data-i18n-aria>
           <button class="bk bk-blue tile" data-go="modes"><svg aria-hidden="true"><use href="#i-grid"/></svg><span data-i18n>Modos</span></button>
@@ -128,6 +125,10 @@
     <section id="screen-modes" class="screen menu" aria-labelledby="t-modes">
       <header class="menu-head"><button class="icon-btn" data-back aria-label="Voltar" data-i18n-aria><svg width="24" height="24"><use href="#i-back"/></svg></button><h2 id="t-modes" data-i18n>Modos de jogo</h2></header>
       <div class="menu-body scrollable" id="body-modes"></div>
+    </section>
+    <section id="screen-events" class="screen menu" aria-labelledby="t-ev">
+      <header class="menu-head"><button class="icon-btn" data-back aria-label="Voltar" data-i18n-aria><svg width="24" height="24"><use href="#i-back"/></svg></button><h2 id="t-ev" data-i18n>Eventos</h2></header>
+      <div class="menu-body scrollable" id="body-events"></div>
     </section>
     <section id="screen-challenges" class="screen menu" aria-labelledby="t-ch">
       <header class="menu-head"><button class="icon-btn" data-back aria-label="Voltar" data-i18n-aria><svg width="24" height="24"><use href="#i-back"/></svg></button><h2 id="t-ch" data-i18n>Desafios</h2></header>
@@ -163,6 +164,10 @@
         <button class="icon-btn" id="btn-settings" aria-label="Configurações" data-i18n-aria><svg width="24" height="24" aria-hidden="true"><use href="#i-gear"/></svg></button>
       </header>
       <div class="score-big"><span class="sr-only" data-i18n>Pontos</span><span id="score">0</span></div>
+      <div class="zen-bar" id="zen-bar" hidden>
+        <canvas id="zen-garden" aria-label="Seu jardim" data-i18n-aria></canvas>
+        <canvas id="zen-art" aria-label="Quadro sendo pintado pelas linhas" data-i18n-aria></canvas>
+      </div>
       <div class="goal-bar" id="goal-bar" hidden>
         <span id="goal-text"></span>
         <div class="progress" aria-hidden="true"><div id="goal-progress"></div></div>
@@ -186,6 +191,12 @@
           <div id="fx"></div>
         </div>
       </main>
+      <div class="helpers" id="helpers" role="toolbar" aria-label="Ajudas" data-i18n-aria hidden>
+        <button class="helper" data-h="hammer" aria-label="Martelo: quebra 1 bloco" data-i18n-aria><span aria-hidden="true">🔨</span><b>0</b></button>
+        <button class="helper" data-h="rotate" aria-label="Girar: gira 1 peça" data-i18n-aria><span aria-hidden="true">🔄</span><b>0</b></button>
+        <button class="helper" data-h="hint" aria-label="Dica: mostra uma boa jogada" data-i18n-aria><span aria-hidden="true">💡</span><b>0</b></button>
+        <button class="helper zen-only" data-z="swap" aria-label="Trocar peças (à vontade no Zen)" data-i18n-aria hidden><span aria-hidden="true">🔀</span><b>∞</b></button>
+      </div>
       <div class="tray" id="tray" aria-label="Peças disponíveis" data-i18n-aria>
         <div class="slot" data-i="0" tabindex="0" role="button"><canvas></canvas></div>
         <div class="slot" data-i="1" tabindex="0" role="button"><canvas></canvas></div>
@@ -309,6 +320,9 @@
   <div class="overlay" id="ov-over" hidden>
     <div class="card center scrollable" role="dialog" aria-modal="true" aria-labelledby="over-title" id="over-card"></div>
   </div>
+  <div class="overlay legend-ov" id="ov-legend" hidden>
+    <div class="card center" role="dialog" aria-modal="true" aria-labelledby="legend-title" id="legend-card"></div>
+  </div>
   <div class="overlay" id="ov-dialog" hidden>
     <div class="card scrollable" role="dialog" aria-modal="true" aria-labelledby="dialog-title" id="dialog-card"></div>
   </div>
@@ -321,6 +335,8 @@
   <script src="js/fx.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/progress.js"></script>
+  <script src="js/flags.js"></script>
+  <script src="js/legend.js"></script>
   <script src="js/season.js"></script>
   <script src="js/weekly.js"></script>
   <script src="js/events.js"></script>

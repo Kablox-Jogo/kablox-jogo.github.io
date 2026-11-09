@@ -57,7 +57,8 @@
     // v1.21 — blocos especiais (pedido do dono): a partir do nível 3, às vezes 1 bloco de uma peça nova vem especial.
     // Estrela: ao ser limpa dá pontos extras. Bomba: ao ser limpa explode os vizinhos 3×3 (blocos contam pontos).
     special: { fromLevel: 3, chance: 0.14, starPts: 150, bombPerBlock: 15, bombShare: 0.35
-    }
+    },
+    legend: { perBlock: 20, diamond: 1500 } // v1.26: poderes dos blocos lendários
   };
 
   // Peças: '#' = bloco. Peças NÃO giram; cada orientação é uma peça própria.
@@ -309,7 +310,7 @@
     }
     set.forEach(function (p, i) { p.c = colors[i]; });
     var SPc = CONFIG.special;
-    if ((ctx.level || 1) >= SPc.fromLevel && rng() < SPc.chance) { // v1.21: 1 bloco especial numa das peças
+    if (!ctx.zen && (ctx.level || 1) >= SPc.fromLevel && rng() < SPc.chance) { // v1.26: Zen sem estrela/bomba // v1.21: 1 bloco especial numa das peças
       var pk = set[Math.floor(rng() * 3)];
       if (pk) pk.sp = { k: Math.floor(rng() * SHAPES[pk.s].cells.length), t: rng() < SPc.bombShare ? 'bomb' : 'star' };
     }
@@ -390,7 +391,7 @@
   function ctxOf(state) {
     // o equilíbrio usa a escala antiga (state.base); partidas salvas antigas não têm base → usam a pontuação
     return { score: typeof state.base === 'number' && isFinite(state.base) ? state.base : state.score, movesSinceClear: state.movesSinceClear, level: levelFor(state.lines || 0),
-      recent: Array.isArray(state.recent) ? state.recent.filter(function (v) { return typeof v === 'number' && isFinite(v); }) : [], easy: !!state.easy };
+      recent: Array.isArray(state.recent) ? state.recent.filter(function (v) { return typeof v === 'number' && isFinite(v); }) : [], easy: !!state.easy, zen: state.mode === 'zen' };
   }
 
   /** v1.17 — Reviver (Clássico, 1× por partida, grátis): troca as peças da bandeja por 3 que cabem no tabuleiro atual.
@@ -474,6 +475,42 @@
           if (kind) delete state.spec[qi];
         }
       }
+      // v1.26 (dono): poderes dos blocos lendários (só no Clássico; valor em state.rare = 'L:id:poder')
+      if (state.rare && typeof state.rare === 'object') {
+        var LGc = CONFIG.legend;
+        for (var q2 = 0; q2 < cleared.length; q2++) {
+          var li = cleared[q2].r * SIZE + cleared[q2].c, lm = typeof state.rare[li] === 'string' && /^L:[a-z]+:([zdkr])$/.exec(state.rare[li]);
+          if (!lm) continue;
+          var lr = cleared[q2].r, lc = cleared[q2].c, pw = lm[1], got = 0;
+          if (pw === 'z') { // ⚡ limpa a linha e a coluna inteiras
+            for (var k2 = 0; k2 < SIZE; k2++) {
+              [[lr, k2], [k2, lc]].forEach(function (rc) { var ii = rc[0] * SIZE + rc[1]; if (!seen[ii] && state.board[ii] >= 0) { mark(rc[0], rc[1]); got++; } });
+            }
+            spx.pts += got * LGc.perBlock; spx.base += got * LGc.perBlock;
+          } else if (pw === 'd') { spx.pts += LGc.diamond; spx.base += LGc.diamond; } // 💎 muitos pontos
+          else if (pw === 'k') spx.double = true; // 👑 dobra a jogada
+          else if (pw === 'r') { // 🌈 completa uma linha (ou coluna) que ficou faltando 1
+            var best = null;
+            for (var a = 0; a < SIZE && !best; a++) {
+              var rowLeft = [], colLeft = [];
+              for (var b2 = 0; b2 < SIZE; b2++) {
+                var ri2 = a * SIZE + b2, ci2 = b2 * SIZE + a;
+                if (seen[ri2] || state.board[ri2] < 0) rowLeft.push(ri2);
+                if (seen[ci2] || state.board[ci2] < 0) colLeft.push(ci2);
+              }
+              if (rowLeft.length === 1) best = { r: a };
+              else if (colLeft.length === 1) best = { c: a };
+            }
+            if (best) for (var b3 = 0; b3 < SIZE; b3++) {
+              var rr3 = best.r != null ? best.r : b3, cc3 = best.c != null ? best.c : b3, i3 = rr3 * SIZE + cc3;
+              if (!seen[i3] && state.board[i3] >= 0) { mark(rr3, cc3); got++; }
+            }
+            spx.pts += got * LGc.perBlock; spx.base += got * LGc.perBlock;
+          }
+          (spx.legend = spx.legend || []).push({ r: lr, c: lc, pw: pw, cells: got });
+          state.rare[li] = state.rare[li].slice(0, state.rare[li].lastIndexOf(':')); // o poder é usado uma vez
+        }
+      }
       cleared.forEach(function (o) { state.board[o.r * SIZE + o.c] = -1; });
       // v1.17 — Aventura: gemas presas em blocos saem quando a linha/coluna é limpa
       if (Array.isArray(state.gems) && state.gems.length) {
@@ -497,6 +534,7 @@
     state.recent.push(count);
     if (state.recent.length > CONFIG.generator.difficulty.recent) state.recent.splice(0, state.recent.length - CONFIG.generator.difficulty.recent);
     var gained = Math.round((blockPts + linePts + comboPts + clearPts + spx.pts) * mult);
+    if (spx.double) { gained *= 2; baseGained *= 2; } // v1.26: 👑 Coroa
     baseGained += spx.base;
     state.score += gained;
     state.base = (typeof state.base === 'number' && isFinite(state.base) ? state.base : 0) + baseGained;
@@ -547,7 +585,7 @@
     SIZE: SIZE, COLORS: COLORS, SHAPES: SHAPES, CONFIG: CONFIG, wholeSetFits: wholeSetFits,
     seededRng: seededRng, makeQueue: makeQueue, zenRelief: zenRelief,
     createBoard: createBoard, canPlace: canPlace, canFitAnywhere: canFitAnywhere,
-    findFullLines: findFullLines, previewLines: previewLines, generatePieces: generatePieces, director: director, mobility: mobility,
+    findFullLines: findFullLines, previewLines: previewLines, generatePieces: generatePieces, ctxOf: ctxOf, director: director, mobility: mobility,
     newGame: newGame, place: place, rescueShape: rescueShape, levelFor: levelFor, multFor: multFor, hasAnyMove: hasAnyMove, pieceFits: pieceFits, isValidState: isValidState, revive: revive
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

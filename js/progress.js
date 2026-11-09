@@ -260,7 +260,7 @@
       best: { classic: 0, zen: 0 }, gamesByMode: { classic: 0, zen: 0, challenge: 0, daily: 0 },
       themesSeen: { jardim: 1 }, challenges: {}, daily: { day: '', best: 0, played: 0 },
       missionsDay: '', missions: [], missionsDone: 0, missionStars: 0, achievements: {}, surpriseSeen: {}, chapterRewards: {}, surprises: 0, scale: 2,
-      season: 0, legend: { classic: 0, daily: 0 }, xp: 0, streak: { days: 0, last: '', best: 0, shields: 1, shieldWeek: '' }, rares: {}, chestDay: '', events: {} }; // v1.25: events = álbum de eventos (participação, abóboras, blocos vistos) — nunca é apagado // v1.24: js/season.js // scale 2 = pontuação com níveis (v1.11+)
+      season: 0, legend: { classic: 0, daily: 0 }, xp: 0, streak: { days: 0, last: '', best: 0, shields: 1, shieldWeek: '' }, rares: {}, chestDay: '', events: {}, helpers: { hammer: 0, rotate: 0, hint: 0 }, helperWelcome: 0, helperGift: 0, legends: {}, zen: { garden: 0, art: [] } }; // v1.26: legends = lendários liberados; zen = jardim e quadros do Zen // v1.26: ajudas (Martelo/Girar/Dica) ganhas nas missões // v1.25: events = álbum de eventos (participação, abóboras, blocos vistos) — nunca é apagado // v1.24: js/season.js // scale 2 = pontuação com níveis (v1.11+)
   }
 
   /** Aceita só valores com o mesmo tipo do modelo (dados corrompidos voltam ao padrão). */

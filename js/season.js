@@ -21,6 +21,28 @@
     { id: 'r3', min: 50000, name: 'Pérola' },
     { id: 'pk', min: Infinity, name: 'Morcego', event: true } // prêmio do Desafio da Semana do Terror (Halloween 2026)
   ];
+  /* v1.26 (dono): BLOCOS LENDÁRIOS (arte em js/legend.js) — liberados para sempre ao passar a marca no Clássico.
+     Aparecem às vezes num quadradinho (mais raro: na peça inteira) e às vezes com poder:
+     z ⚡ limpa a linha e a coluna · d 💎 muitos pontos · k 👑 dobra a jogada · r 🌈 completa uma linha que falta 1. */
+  var LEG = typeof module !== 'undefined' && module.exports ? require('./legend.js') : root.MZLegend;
+  var LEGENDS = (LEG && LEG.LIST) || [];
+  var POWERS = { z: { icon: '⚡', name: 'Raio: limpa a linha e a coluna' }, d: { icon: '💎', name: 'Diamante: muitos pontos' }, k: { icon: '👑', name: 'Coroa: dobra a jogada' }, r: { icon: '🌈', name: 'Arco-íris: completa uma linha' } };
+  function unlockLegends(s, score) {
+    s.legends = s.legends || {}; var got = [];
+    LEGENDS.forEach(function (l) { if ((score || 0) >= l.min && !s.legends[l.id]) { s.legends[l.id] = 1; got.push(l); } });
+    return got;
+  }
+  /** Sorteia (ou não) um lendário para uma peça nova: { id, whole, pw } ou null. */
+  function rollLegend(s, scoreNow, rnd) {
+    var have = LEGENDS.filter(function (l) { return s.legends && s.legends[l.id]; }); if (!have.length) return null;
+    var hot = have.filter(function (l) { return (scoreNow || 0) >= l.min; }), chance = hot.length ? 0.06 : 0.025;
+    if (rnd() >= chance) return null;
+    var pool = hot.length ? hot : have, id = pool[Math.floor(rnd() * pool.length)].id;
+    var whole = rnd() < 0.12, pw = rnd() < 0.3 ? 'zdkr'.charAt(Math.floor(rnd() * 4)) : '';
+    return { id: id, whole: whole, pw: pw };
+  }
+  /** Valor guardado em state.rare: 'L:aurora' ou 'L:aurora:z'. */
+  function legendOf(v) { var m = typeof v === 'string' && /^L:([a-z]+)(?::([zdkr]))?$/.exec(v); return m && LEGENDS.some(function (l) { return l.id === m[1]; }) ? { id: m[1], pw: m[2] || '' } : null; }
   /** Libera os raros alcançados com `score`. Retorna a lista dos que acabaram de ser liberados. */
   function unlockRares(s, score) {
     s.rares = s.rares || {}; var got = [];
@@ -120,7 +142,7 @@
     return 0;
   }
 
-  var api = { SEASON: SEASON, MEDALS: MEDALS, RARES: RARES, unlockRares: unlockRares, rollRare: rollRare, openChest: openChest, medalFor: medalFor, nextMedal: nextMedal, startSeason: startSeason,
+  var api = { LEGENDS: LEGENDS, POWERS: POWERS, unlockLegends: unlockLegends, rollLegend: rollLegend, legendOf: legendOf, SEASON: SEASON, MEDALS: MEDALS, RARES: RARES, unlockRares: unlockRares, rollRare: rollRare, openChest: openChest, medalFor: medalFor, nextMedal: nextMedal, startSeason: startSeason,
     need: need, levelOf: levelOf, titleFor: titleFor, isWeekend: isWeekend, gameXp: gameXp, addXp: addXp,
     touchStreak: touchStreak, streakNow: streakNow, dayNum: dayNum, weekKey: weekKey };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

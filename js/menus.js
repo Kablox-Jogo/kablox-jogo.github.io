@@ -19,8 +19,7 @@
 
   /* ---------------- tela inicial ---------------- */
   function playClassic() { playMode('classic'); }
-  /* v1.24 (dono: "quem quer Zen cai sempre no Clássico"): botões de modo embaixo do JOGAR; o jogo lembra o último escolhido */
-  function homeMode() { var m = G.settings.homeMode; if (m === 'event' && !G.eventNow()) m = 'classic'; return ['classic', 'zen', 'weekly', 'event'].indexOf(m) >= 0 ? m : 'classic'; }
+  /* v1.26 (dono): três modos na tela inicial — JOGAR = Clássico; cartões Zen e Eventos embaixo */
   function playMode(m) {
     if (!G.tutorialDone()) { G.startTutorial('play'); return; }
     if (m === 'event') { G.openEvent(); return; }
@@ -29,20 +28,18 @@
     G.confirmReplace(m, function () { G.startGame(m); }, function () { G.startGame(m, { resume: true }); });
   }
   function syncModePick() {
-    var m = homeMode(), names = { classic: T('Clássico'), zen: T('Zen'), weekly: T('Desafio da Semana'), event: T('Desafio do evento') };
-    Array.prototype.forEach.call(document.querySelectorAll('#mode-pick [data-mode]'), function (b) {
-      var id = b.getAttribute('data-mode');
-      if (id === 'event') b.hidden = true; // o evento já tem o banner próprio
-      b.setAttribute('aria-checked', String(id === m)); b.classList.toggle('on', id === m);
-    });
-    $('#play-mode').textContent = G.hasSave(m) && m !== 'event' ? T('Continuar · {m}', { m: names[m] }) : names[m];
+    $('#play-mode').textContent = G.hasSave('classic') ? T('Continuar · {m}', { m: T('Clássico') }) : T('Clássico');
+    var zg = G.flags.zenNew ? (G.stats.zen && G.stats.zen.garden) || 0 : 0; // v1.26: jardim do Zen
+    $('#zen-sub').textContent = G.hasSave('zen') ? T('Continuar') + (zg ? ' · 🌱 ' + Math.min(12, 1 + Math.floor(zg / 12)) : '') : T('No seu ritmo');
+    var ev = G.eventNow(), st = G.stats, played = ev && (st.events || {})[ev.id];
+    $('#events-ico').textContent = ev ? ev.icon : '🎉';
+    $('#events-sub').textContent = ev ? T(ev.name) : T('Desafio da Semana');
+    $('#badge-events').hidden = !(ev && !played);
   }
-  Array.prototype.forEach.call(document.querySelectorAll('#mode-pick [data-mode]'), function (b) {
-    b.addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); G.settings.homeMode = b.getAttribute('data-mode'); G.saveSettings(); syncModePick(); });
-  });
   window.GBHome = { sync: syncModePick };
   syncModePick();
-  $('#btn-play').addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); playMode(homeMode()); });
+  $('#btn-zen').addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); playMode('zen'); });
+  $('#btn-play').addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); playMode('classic'); });
   if ($('#home-next')) $('#home-next').addEventListener('click', function () { G.sound.tap(); var g = P.nextGoal(G.stats); G.show(g && g.kind === 'achievement' ? 'stats' : 'collection'); });
   Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function (b) {
     b.addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); G.show(b.getAttribute('data-go')); });
@@ -97,20 +94,22 @@
     var body = $('#body-challenges'), st = G.stats, day = G.today(); body.innerHTML = '';
     P.ensureMissions(st, day); G.saveStats();
 
-    var d = P.daily(day), sec = section(T('Desafio do dia'), d.text + ' ' + T('Mesmas peças para todo mundo hoje: compare com seus amigos.'));
+    var d = P.daily(day), sec = section('📅 ' + T('Desafio do dia'), d.text + ' ' + T('Mesmas peças para todo mundo hoje: compare com seus amigos.'));
+    sec.classList.add('hero-daily'); // v1.25.1 (dono): o desafio tem que parecer um botão de jogar, não uma missão
     var info = h('p', 'mode-best', st.daily.day === day && st.daily.played
       ? T(st.daily.played > 1 ? 'Seu melhor hoje: {n} pontos ({k} tentativas)' : 'Seu melhor hoje: {n} pontos ({k} tentativa)', { n: fmt(st.daily.best), k: st.daily.played })
       : T('Você ainda não jogou hoje.'));
     sec.appendChild(info);
     var row = h('div', 'mode-actions');
-    if (G.hasSave('daily')) row.appendChild(btn(T('Continuar'), 'primary', function () { G.startGame('daily', { resume: true }); }));
-    row.appendChild(btn(st.daily.day === day && st.daily.played ? T('Jogar de novo') : T('Jogar'), G.hasSave('daily') ? '' : 'primary', function () {
+    if (G.hasSave('daily')) row.appendChild(btn('▶ ' + T('Continuar'), 'primary big', function () { G.startGame('daily', { resume: true }); }));
+    row.appendChild(btn('▶ ' + (st.daily.day === day && st.daily.played ? T('Jogar de novo') : T('Jogar')), G.hasSave('daily') ? '' : 'primary big', function () {
       G.confirmReplace('daily', function () { G.startGame('daily'); }, function () { G.startGame('daily', { resume: true }); });
     }));
     sec.appendChild(row);
     body.appendChild(sec);
 
-    var ms = section(T('Missões de hoje'), T('Opcionais. Cada missão vale 1 estrela. Se você não jogar num dia, nada é perdido.'));
+    var ms = section(T('Missões de hoje'), G.flags.helpers ? T('Acontecem sozinhas enquanto você joga. Cada missão concluída dá +1 ajuda (Martelo, Girar ou Dica). Se você não jogar num dia, nada é perdido.') : T('Acontecem sozinhas enquanto você joga. Se você não jogar num dia, nada é perdido.'));
+    ms.classList.add('missions-sec');
     var ul = h('ul', 'mission-list');
     st.missions.forEach(function (m) {
       var def = P.missionDef(m.id), li = h('li', m.done ? 'done' : '');
@@ -118,6 +117,7 @@
       top.innerHTML = m.done ? icon('i-check', 20) : icon('i-star', 18);
       top.appendChild(h('span', '', T(def.text)));
       top.appendChild(h('b', '', m.done ? T('Feito') : (def.stat === 'gameScore' ? fmt(m.cur) + '/' + fmt(def.target) : m.cur + '/' + def.target)));
+      if (G.flags.helpers) top.appendChild(h('span', 'mission-prize' + (m.done ? ' got' : ''), m.done ? '✓ ' + T('ajuda') : '+1 ' + T('ajuda')));
       li.appendChild(top); li.appendChild(bar(m.cur, def.target));
       ul.appendChild(li);
     });
@@ -132,6 +132,8 @@
     body.appendChild(cs);
     // v1.17 — Aventura: os desafios em capítulos (Capítulo 1 = os 10 originais, livres). Capítulos novos abrem
     // quando a fase-chefe do anterior é vencida; dentro deles, as fases abrem em sequência.
+    var nextLv = null; // v1.25.1: a próxima fase a jogar ganha destaque e botão "Jogar"
+    P.CHAPTERS.forEach(function (ch) { if (!P.chapterOpen(st, ch)) return; ch.levels.forEach(function (id) { if (!nextLv && P.levelOpen(st, id) && !(st.challenges[id] && st.challenges[id].stars)) nextLv = id; }); });
     P.CHAPTERS.forEach(function (ch, ci) {
       var open = P.chapterOpen(st, ch), pr = P.chapterProgress(st, ch);
       var sec = section(T('Capítulo {n}: {name}', { n: ci + 1, name: T(ch.name) }), '');
@@ -147,14 +149,16 @@
       var list = h('ol', 'ch-list');
       ch.levels.forEach(function (id) {
         var c = G.challengeDef(id), i = P.CHALLENGES.indexOf(c), rec = st.challenges[c.id], li = h('li'), lvOpen = P.levelOpen(st, c.id);
-        var b = h('button', 'ch-item' + (rec && rec.stars ? ' done' : '') + (lvOpen ? '' : ' locked'));
+        var b = h('button', 'ch-item' + (rec && rec.stars ? ' done' : '') + (lvOpen ? '' : ' locked') + (c.id === nextLv ? ' next' : ''));
         b.appendChild(h('span', 'ch-num', String(i + 1)));
         var tx = h('span', 'ch-text'), nm = h('strong', '', T(c.name));
         if (c.boss) nm.appendChild(h('span', 'boss-tag', T('CHEFE')));
         tx.appendChild(nm);
         tx.appendChild(h('small', c.goal === 'gems' ? 'gem-tag' : '', P.goalText(c) + ' · ' + T('{n} peças', { n: c.pieces })));
+        if (lvOpen) tx.appendChild(stars(rec ? rec.stars : 0));
         b.appendChild(tx);
-        if (lvOpen) b.appendChild(stars(rec ? rec.stars : 0)); else b.insertAdjacentHTML('beforeend', icon('i-lock', 18));
+        if (!lvOpen) b.insertAdjacentHTML('beforeend', icon('i-lock', 18));
+        else b.appendChild(h('span', c.id === nextLv ? 'ch-play' : 'ch-go', c.id === nextLv ? '▶ ' + T('Jogar') : (rec && rec.stars ? '↻' : '▶')));
         b.setAttribute('aria-label', (i + 1) + '. ' + T(c.name) + ': ' + P.goalText(c) + '. ' + (!lvOpen ? T('bloqueado') : rec ? T('{n} estrelas', { n: rec.stars }) : T('não concluído')));
         b.addEventListener('click', function () {
           if (!lvOpen) { G.toast(T('Fase bloqueada'), T('Vença a fase anterior para abrir.')); return; }
@@ -191,7 +195,7 @@
       sec.appendChild(sel);
       var pkTxt = st.rares && st.rares.pk ? T('🏆 Caçador de Morcegos: conquistado!') : T('🏆 Caçador de Morcegos: liberte {n} morcegos numa partida (seu melhor: {b}).', { n: ev.goal, b: (mine && mine.pk) || 0 });
       sec.appendChild(h('p', 'm-note', pkTxt));
-      if (ev.nightmare) sec.appendChild(h('p', 'm-note ev-badge' + (mine && mine.nightmare ? ' got' : ''), mine && mine.nightmare ? '👹 ' + T(ev.nightmare.badge) + ' — ' + T('guardado para sempre') : T('Fase Pesadelo: vença o desafio para liberar e ganhar o {b}.', { b: T(ev.nightmare.badge) })));
+      if (ev.nightmare && (active || (mine && mine.nightmare))) sec.appendChild(h('p', 'm-note ev-badge' + (mine && mine.nightmare ? ' got' : ''), mine && mine.nightmare ? '👹 ' + T(ev.nightmare.badge) + ' — ' + T('guardado para sempre') : T('Fase Pesadelo: vença o desafio para liberar e ganhar o {b}.', { b: T(ev.nightmare.badge) })));
       sec.appendChild(h('p', 'm-note', T('Blocos descobertos: {a} de {b}', { a: nSeen, b: ev.album.length })));
       var grid = h('div', 'col-grid gallery');
       ev.album.forEach(function (a) {
@@ -206,9 +210,39 @@
       body.appendChild(sec);
     });
   }
+  /* v1.26 (dono): Modo Eventos — o que está valendo agora, o que vem por aí e o álbum (nada é apagado) */
+  function fmtDay(k) { var p = String(k).split('-'); return p[2] + '/' + p[1]; }
+  function renderEvents() {
+    var body = $('#body-events'), st = G.stats, day = G.today(), evs = (window.MZEvents && window.MZEvents.LIST) || [], now = G.eventNow(); body.innerHTML = '';
+    if (now) { // evento valendo
+      var mine = (st.events || {})[now.id], sec = section(now.icon + ' ' + T(now.name), T('Até {d}. Conteúdo só deste evento: não aparece no Clássico nem no Zen.', { d: fmtDay(now.to) }));
+      sec.classList.add('hero-daily', 'ev-live');
+      if (now.goal) sec.appendChild(h('p', 'mode-best', T('Seu melhor: {b} de {n}', { b: (mine && mine.pk) || 0, n: now.goal })));
+      var bt = btn('▶ ' + T('Jogar o evento'), 'primary big', function () { G.openEvent(); }); bt.id = 'btn-event';
+      sec.appendChild(bt); body.appendChild(sec);
+    }
+    var wk = section('🏆 ' + T('Desafio da Semana'), T('Mesmas peças para todos até domingo. No fim, o jogo cria um código para comparar com a galera.'));
+    wk.classList.add('ev-week');
+    wk.appendChild(h('p', 'mode-best', G.bestFor('weekly') > 0 ? T('Seu melhor da semana: {n}', { n: fmt(G.bestFor('weekly')) }) : T('Ainda não jogou esta semana')));
+    var bw = btn('▶ ' + (G.hasSave('weekly') ? T('Continuar') : T('Jogar')), now ? '' : 'primary big', function () { playMode('weekly'); }); bw.id = 'btn-weekly';
+    wk.appendChild(bw); body.appendChild(wk);
+    var soon = evs.filter(function (e) { return window.MZEvents.stateOf(e, day) === 'future'; });
+    if (soon.length) {
+      var ss = section(T('Em breve'), '');
+      soon.forEach(function (e) {
+        var row = h('div', 'ev-soon'), tx = h('span', 'mc-txt');
+        row.appendChild(h('span', 'mc-ico', e.icon)); tx.appendChild(h('strong', '', T(e.name))); tx.appendChild(h('small', '', T('Começa em {d}', { d: fmtDay(e.from) })));
+        row.appendChild(tx); row.appendChild(h('span', 'ev-lock', '🔒')); ss.appendChild(row);
+      });
+      body.appendChild(ss);
+    }
+    var al = h('h3', 'ev-album-title', '📖 ' + T('Álbum de eventos')); body.appendChild(al);
+    var before = body.children.length;
+    renderEventAlbum(body, st);
+    if (body.children.length === before) body.appendChild(h('p', 'm-note ev-empty', T('Os eventos que você jogar ficam guardados aqui para sempre, com tudo o que você conquistou.')));
+  }
   function renderCollection() {
     var body = $('#body-collection'), st = G.stats; body.innerHTML = '';
-    renderEventAlbum(body, st);
     // v1.18 (pedido do dono): galeria — só para ver. Toda partida começa no Clássico e os blocos mudam sozinhos.
     var sk = section(T('Galeria de blocos'), T('Os estilos que você já liberou. Toda partida começa no Clássico e, em jogadas especiais, os blocos se transformam nestes estilos.'));
     var grid = h('div', 'col-grid gallery'), hidden = 0;
@@ -228,6 +262,34 @@
     sk.appendChild(grid);
     if (hidden) sk.appendChild(h('p', 'm-note', T('Mais {n} estilos para liberar jogando — sem compras.', { n: hidden })));
     body.appendChild(sk);
+
+    // v1.26 (dono): Zen novo — jardim e galeria de quadros
+    if (G.flags.zenNew) {
+    var zs = section('🌿 ' + T('Jardim e quadros do Zen'), T('Cada linha que você limpa no Zen faz o jardim crescer e pinta um quadro. Quando o quadro fica pronto, ele vem para cá.'));
+    var zd = st.zen || { garden: 0, art: [] }, gcv = document.createElement('canvas'); gcv.className = 'zen-garden-big'; zs.appendChild(gcv);
+    var zp = h('p', 'm-note', T('{n} linhas no Zen · {p} plantas', { n: G.fmt(zd.garden || 0), p: Math.min(12, 1 + Math.floor((zd.garden || 0) / 12)) })); zs.appendChild(zp);
+    if ((zd.art || []).length) {
+      var ag = h('div', 'art-grid');
+      zd.art.forEach(function (a, i) { var ac = document.createElement('canvas'); ac.className = 'art-item'; ac.setAttribute('role', 'img'); ac.setAttribute('aria-label', T('Quadro {n}', { n: zd.art.length - i })); ag.appendChild(ac); });
+      zs.appendChild(ag);
+    } else zs.appendChild(h('p', 'm-note', T('Nenhum quadro pronto ainda.')));
+    body.appendChild(zs);
+    requestAnimationFrame(function () { if (!document.contains(gcv)) return; G.drawGarden(gcv, zd.garden || 0); Array.prototype.forEach.call(zs.querySelectorAll('.art-item'), function (ac, i) { G.drawArt(ac, zd.art[i]); }); });
+
+    // v1.26 (dono): blocos lendários — cadeado com o bloco escondido até passar a marca no Clássico
+    } // fim do Zen novo
+    if (window.MZLegend && G.flags.legends) {
+      var lgSec = section('✨ ' + T('Blocos lendários'), T('Liberados para sempre ao passar a marca no Clássico. Aparecem às vezes nas peças — e às vezes com poder: ⚡ limpa linha e coluna · 💎 muitos pontos · 👑 dobra a jogada · 🌈 completa uma linha.'));
+      var lg = h('div', 'leg-grid'), lgN = 0;
+      window.MZLegend.LIST.forEach(function (l, i) {
+        var got = st.legends && st.legends[l.id], it = h('div', 'leg-item' + (got ? '' : ' locked'));
+        if (got) { lgN++; var c2 = document.createElement('canvas'); c2.width = c2.height = 128; window.MZLegend.draw(c2.getContext('2d'), l.id, 0, 0, 128, 900 + i * 400, { seed: i }); it.appendChild(c2); it.appendChild(h('strong', '', T(l.name))); it.appendChild(h('small', '', T('Liberado'))); }
+        else { it.appendChild(h('div', 'leg-lock', '🔒')); it.appendChild(h('strong', '', '???')); it.appendChild(h('small', '', T('{n} pontos', { n: G.fmt(l.min) }))); }
+        lg.appendChild(it);
+      });
+      lgSec.appendChild(lg); lgSec.appendChild(h('p', 'm-note', T('{a} de {b} liberados', { a: lgN, b: window.MZLegend.LIST.length })));
+      body.appendChild(lgSec);
+    }
 
     var th = section(T('Visuais'), T('O visual do jogo muda sozinho em jogadas especiais (combos, várias linhas, tabuleiro limpo, recordes). Só a aparência muda, nunca as regras.'));
     var tl = h('ul', 'theme-list');
@@ -394,7 +456,7 @@
     body.appendChild(h('p', 'version', 'Kablox v' + G.VERSION));
   }
 
-  var renderers = { modes: renderModes, challenges: renderChallenges, collection: renderCollection, stats: renderStats, records: renderRecords, help: renderHelp };
+  var renderers = { events: renderEvents, modes: renderModes, challenges: renderChallenges, collection: renderCollection, stats: renderStats, records: renderRecords, help: renderHelp };
   window.GBMenus = {
     onShow: function (name) {
       if (renderers[name]) { renderers[name](); var b = document.querySelector('#screen-' + name + ' .menu-body'); if (b) b.scrollTop = 0; }

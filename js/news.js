@@ -4,6 +4,17 @@
 (function (root) {
   'use strict';
   var LIST = [
+    { v: '1.26.0', date: '2026-11-11',
+      pt: ['🎉 Tela inicial com 3 modos: Jogar (Clássico), Zen e Eventos',
+        '📖 Nova tela Eventos: Desafio da Semana, o que vem por aí (Natal em breve 🎄) e o Álbum com tudo o que você conquistou no Halloween',
+        '🌿 Zen 100% tranquilo: sem pontos voando, elogios, transformações nem blocos especiais',
+        '▶️ Desafios mais fáceis de achar: o desafio do dia e a próxima fase da Aventura ganharam botão de jogar',
+        '✨ Aviso de visual ou estilo novo só aparece na primeira vez'],
+      en: ['🎉 Home screen with 3 modes: Play (Classic), Zen and Events',
+        '📖 New Events screen: Weekly Challenge, what is coming (Christmas soon 🎄) and the Album with everything you earned on Halloween',
+        '🌿 Fully calm Zen: no flying points, praise, transformations or special blocks',
+        '▶️ Challenges easier to find: the daily challenge and the next Adventure stage got a play button',
+        '✨ New visual or style notice only shows the first time'] },
     { v: '1.25.0', date: '2026-11-03',
       pt: ['💥 Cada estilo de bloco quebra do seu jeito: moedas no Ouro, brasas na Lava, estrelas no Brilho e na Galáxia, descargas no Circuito, vidro colorido no Vitral e muito mais',
         '🧶 Pelúcia agora solta fios e tufos voando', '🎨 Blocos com cara de material de verdade: gelo azul, pedra e metal cinzas, madeira marrom, queijo e ouro amarelos, bala de hortelã em espiral e estrelinhas no Brilho', '🔆 Moldura de combo na cor do visual: cresce do ×2 ao ×10, com faíscas correndo pela borda',

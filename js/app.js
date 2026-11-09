@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.25.0';
+  var VERSION = '1.26.0';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise, Season = window.MZSeason, Weekly = window.MZWeekly, Events = window.MZEvents;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   /* v1.24 (reclamação dos jogadores: "tabuleiro quase transparente, machuca a vista"): contraste mínimo garantido em
@@ -193,7 +193,9 @@
     if (!nmReady) return null;
     var row = art.keys.indexOf(skin); return row < 0 ? null : { row: row, key: skin, img: nmImg, cell: art.cell, normal: true };
   }
-  setTimeout(function () { nmTile('ice'); }, 0); // v1.25: começa a carregar os blocos novos já na abertura (a galeria não mostra os antigos)
+  setTimeout(function () { nmTile('ice'); }, 0);
+  var FLAGS = window.MZFlags || { helpers: true, legends: true, zenNew: true }; // v1.26: partes esperando aprovação do dono (js/flags.js)
+  setTimeout(function () { if (FLAGS.helpers && !stats.helperWelcome) { stats.helperWelcome = 1; stats.helpers = { hammer: 1, rotate: 1, hint: 1 }; saveStats(); } }, 0); // v1.26: 1 de cada para experimentar // v1.25: começa a carregar os blocos novos já na abertura (a galeria não mostra os antigos)
   function artTile(skin, theme) { var t = hwTile(skin, theme); if (t) { t.img = hwImg; t.cell = window.MZHalloweenArt.cell; return t; } return nmTile(skin); }
   function sprite(theme, color, px, skinOpt) {
     var skin = skinOpt || curSkin(), classic = skin !== 'theme'; // casas vazias quadradas fora do modo "Do tema"
@@ -302,11 +304,11 @@
     if (anims.length || drag) watchPerf(t); else perf.last = 0;
     var real = t; t = animNow(real);
     // só o movimento contínuo (sem animação nem arraste): até ~30 quadros por segundo
-    if (!anims.length && !drag && (live() || onFire() || comboFrameOn() || facesOn() || cagesOn()) && real - lastLive < 30) { requestRender(); return; }
+    if (!anims.length && !drag && (live() || onFire() || comboFrameOn() || facesOn() || cagesOn() || legendsOn()) && real - lastLive < 30) { requestRender(); return; }
     lastLive = real;
     anims = anims.filter(function (a) { return t - a.start < a.dur; });
     render(t);
-    if (anims.length || glowing() || live() || onFire() || comboFrameOn() || facesOn() || cagesOn() || (tutTarget && settings.anim !== 'off')) requestRender();
+    if (anims.length || glowing() || live() || onFire() || comboFrameOn() || facesOn() || cagesOn() || legendsOn() || (tutTarget && settings.anim !== 'off')) requestRender();
   }
 
   // estilos com movimento contínuo (pelos, gelatina): só com animações completas e o jogo visível
@@ -395,7 +397,8 @@
       var rx = pad + (ri % SIZE) * cell, ry = pad + Math.floor(ri / SIZE) * cell;
       ctx.save(); if (settings.anim === 'full' && state.rare[rk] !== 'pk') ctx.globalAlpha = 0.82 + 0.18 * Math.sin(now / 300 + ri);
       var rsh = state.rare[rk] === 'pk' && settings.anim === 'full' && (now + ri * 377) % 2400 < 300 ? Math.sin(now / 22) * cell * 0.05 : 0; // o morcego sacode a gaiola
-      ctx.drawImage(rareSprite(state.rare[rk], px), rx + rsh, ry, cell, cell);
+      if (String(state.rare[rk]).charAt(0) === 'L') { ctx.globalAlpha = 1; drawRare(ctx, state.rare[rk], rx, ry, cell, px, now, ri); }
+      else ctx.drawImage(rareSprite(state.rare[rk], px), rx + rsh, ry, cell, cell);
       if (state.rare[rk] === 'pk' && state.pkAge && state.pkAge[rk] != null) { // v1.25: jogadas até o morcego fugir (aparece nas 3 últimas)
         var fleeLeft = evFlee() - ((state.evMoves || 0) - state.pkAge[rk]);
         if (fleeLeft <= 3) {
@@ -639,8 +642,32 @@
     Themes.roundRect(g, px * 0.1, px * 0.1, px * 0.8, px * 0.8, px * 0.17); g.stroke();
     return (rareCache[key] = c);
   }
-  function rareName(t) { var r = Season.RARES.filter(function (x) { return x.id === t; })[0]; return r ? T(r.name) : ''; }
-  function rareModes() { return state && (state.mode === 'classic' || state.mode === 'zen' || state.mode === 'event'); }
+  function rareName(t) { var lg = Season.legendOf(t); if (lg) return T(window.MZLegend.byId(lg.id).name); var r = Season.RARES.filter(function (x) { return x.id === t; })[0]; return r ? T(r.name) : ''; }
+  /* v1.26 (dono): blocos lendários — desenhados ao vivo por js/legend.js; poder = selinho no canto */
+  var LEG_COL = { aurora: ['#3cffaa', '#50c8ff', '#be6eff'], glitch: ['#ff2bd6', '#2bf3ff', '#ffffff'], dragon: ['#ff5a1f', '#ffc23a', '#7a0f0f'], plasma: ['#9fe7ff', '#5a7bff', '#ffffff'], eye: ['#ff9a3c', '#ffe08a', '#7a2a00'], portal: ['#7a5bff', '#2bf3ff', '#ff6af0'], holo: ['#7fffe6', '#b38cff', '#ffffff'], galaxy: ['#ffbef0', '#c8dcff', '#fff6d8'], blackhole: ['#ffb347', '#ff6a2a', '#fff0c8'] };
+  function legendLite() { return settings.anim !== 'full' || settings.quality === 'low'; }
+  function drawPowerBadge(c2, pw, x, y, cell) {
+    var P2 = Season.POWERS[pw]; if (!P2) return;
+    var bx = x + cell * 0.78, by = y + cell * 0.22, br = cell * 0.2;
+    c2.save(); c2.fillStyle = 'rgba(12,8,24,.88)'; c2.beginPath(); c2.arc(bx, by, br, 0, 7); c2.fill();
+    c2.lineWidth = Math.max(1, cell * 0.035); c2.strokeStyle = '#ffd36b'; c2.stroke();
+    c2.font = Math.round(cell * 0.24) + 'px sans-serif'; c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText(P2.icon, bx, by + cell * 0.01);
+    c2.restore();
+  }
+  function drawRare(c2, t, x, y, cell, px, now, seed) {
+    var lg = Season.legendOf(t);
+    if (lg && window.MZLegend) { window.MZLegend.draw(c2, lg.id, x, y, cell, legendLite() ? 0 : (now || 0), { seed: seed || 0, lite: legendLite() }); if (lg.pw) drawPowerBadge(c2, lg.pw, x, y, cell); return; }
+    c2.drawImage(rareSprite(t, px), x, y, cell, cell);
+  }
+  /** Quadradinhos especiais de uma peça: [[índice da casa, valor]] (peça inteira lendária = todas as casas). */
+  function rareCellsOf(p) {
+    var sh = SHAPES[p.s]; if (!p.rk || !sh.cells[p.rk.k]) return [];
+    if (!p.rk.all) return [[p.rk.k, p.rk.t]];
+    var lg = Season.legendOf(p.rk.t), base = lg ? 'L:' + lg.id : p.rk.t;
+    return sh.cells.map(function (_, i) { return [i, i === p.rk.k ? p.rk.t : base]; });
+  }
+  function legendsOn() { if (!state || !state.rare || legendLite() || document.hidden || !screenIs('game')) return false; for (var k in state.rare) if (String(state.rare[k]).charAt(0) === 'L') return true; return false; }
+  function rareModes() { return state && (state.mode === 'classic' || state.mode === 'event'); } // v1.26: Zen só com blocos normais
   function tagRares() { // peças novas podem vir com 1 quadradinho raro
     if (!rareModes()) return;
     state.pieces.forEach(function (p) {
@@ -648,6 +675,8 @@
       var ev = state.mode === 'event' ? eventNow() : null, t = null; // v1.25: abóboras só no modo Evento
       if (ev) t = Math.random() < ev.goalChance ? ev.rare : null; // v1.25 (dono): no modo Halloween só a gaiola — sem Vidro doce, Brasa ou Pérola
       else { t = Season.rollRare(stats, state.score, Math.random); if (t === 'pk') t = null; } // gaiola do morcego nunca fora do evento
+      var lgR = FLAGS.legends && state.mode === 'classic' ? Season.rollLegend(stats, state.score, Math.random) : null; // v1.26: lendários só no Clássico
+      if (lgR) { p.rk = { k: Math.floor(Math.random() * SHAPES[p.s].cells.length), t: 'L:' + lgR.id + (lgR.pw ? ':' + lgR.pw : '') }; if (lgR.whole && SHAPES[p.s].cells.length > 1) p.rk.all = 1; return; }
       if (t) p.rk = { k: Math.floor(Math.random() * SHAPES[p.s].cells.length), t: t };
     });
   }
@@ -664,6 +693,25 @@
   }
   function drawAnim(ctx, a, now, px) {
     if (a.type === 'morph') { drawMorph(ctx, a, now, px); return; }
+    if (a.type === 'legendBurst') { // v1.26: lendário quebrando — o bloco cresce e some num anel nas cores dele
+      var lt = (now - a.start) / a.dur; if (lt < 0 || lt >= 1) return;
+      var lcx = L.pad + (a.c + 0.5) * L.cell, lcy = L.pad + (a.r + 0.5) * L.cell, lcol = LEG_COL[a.id] || ['#fff', '#fff'];
+      ctx.save(); ctx.globalAlpha = 1 - lt;
+      var ls = L.cell * (1 + lt * 0.9); if (window.MZLegend) window.MZLegend.draw(ctx, a.id, lcx - ls / 2, lcy - ls / 2, ls, now, { seed: a.r * 8 + a.c, lite: true });
+      ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = Math.max(2, L.cell * 0.12 * (1 - lt));
+      [0, 1].forEach(function (k) { ctx.strokeStyle = lcol[k]; ctx.beginPath(); ctx.arc(lcx, lcy, L.cell * (0.4 + lt * (1.6 + k * 0.7)), 0, 7); ctx.stroke(); });
+      ctx.restore(); return;
+    }
+    if (a.type === 'hint') { // v1.26: dica — contorno piscando onde a peça encaixa
+      var ht = (now - a.start) / a.dur; if (ht < 0 || ht >= 1) return;
+      var hal = 0.7 + 0.3 * Math.sin(ht * Math.PI * 6);
+      ctx.save(); ctx.globalAlpha = hal * Math.min(1, (1 - ht) * 4); ctx.strokeStyle = boardTheme().accent; ctx.fillStyle = boardTheme().accent;
+      ctx.lineWidth = Math.max(2, L.cell * 0.08); ctx.shadowColor = boardTheme().accent; ctx.shadowBlur = L.cell * 0.3;
+      a.cells.forEach(function (x) { var hx = L.pad + x[1] * L.cell, hy = L.pad + x[0] * L.cell;
+        ctx.globalAlpha = hal * 0.4; ctx.fillRect(hx + 3, hy + 3, L.cell - 6, L.cell - 6);
+        ctx.globalAlpha = hal; Themes.roundRect(ctx, hx + 3, hy + 3, L.cell - 6, L.cell - 6, L.cell * 0.18); ctx.stroke(); });
+      ctx.restore(); return;
+    }
     if (a.type === 'batFlee') { // v1.25: morcego escapa voando, deixando um rastro de fumaça
       var ft = (now - a.start) / a.dur; if (ft < 0 || ft >= 1) return;
       var fcx = L.pad + (a.c + 0.5) * L.cell, fcy = L.pad + (a.r + 0.5) * L.cell, fdir = a.c < SIZE / 2 ? -1 : 1;
@@ -840,10 +888,207 @@
       var ox = (w - shape.w * c) / 2, oy = (h - shape.h * c) / 2;
       shape.cells.forEach(function (sc) { ctx.drawImage(sprite(th, p.c, px), ox + sc[1] * c, oy + sc[0] * c, c, c); });
       if (p.sp && shape.cells[p.sp.k]) drawSpecialOn(ctx, p.sp.t, ox + shape.cells[p.sp.k][1] * c, oy + shape.cells[p.sp.k][0] * c, c, px);
-      if (p.rk && shape.cells[p.rk.k] && (p.rk.t !== 'pk' || state.mode === 'event')) ctx.drawImage(rareSprite(p.rk.t, px), ox + shape.cells[p.rk.k][1] * c, oy + shape.cells[p.rk.k][0] * c, c, c);
+      if (p.rk && (p.rk.t !== 'pk' || state.mode === 'event')) rareCellsOf(p).forEach(function (rc) { drawRare(ctx, rc[1], ox + shape.cells[rc[0]][1] * c, oy + shape.cells[rc[0]][0] * c, c, px, 0, rc[0]); });
       if (deal) { slot.classList.remove('deal'); void slot.offsetWidth; slot.classList.add('deal'); }
     });
   }
+
+  /* ---------------- v1.26: ajudas — Martelo, Girar e Dica (ganhas nas missões diárias; dono: valem em todo lugar) ---------------- */
+  var HELP = { hammer: { name: 'Martelo', icon: '🔨', tip: 'Toque num bloco do tabuleiro para quebrar.' },
+    rotate: { name: 'Girar', icon: '🔄', tip: 'Toque numa peça embaixo para girar.' },
+    hint: { name: 'Dica', icon: '💡', tip: '' } };
+  var helperMode = null, shapeKeyMap = null;
+  function helpersOn() { return FLAGS.helpers && !!state && state.mode !== 'tutorial' && state.mode !== 'weekly' && !state.over; } // v1.26 (dono): sem ajudas no Desafio da Semana (regras iguais para todos e a prova da partida continua valendo)
+  function helperCount(k) { return (stats.helpers && stats.helpers[k]) || 0; }
+  function updateHelpers() {
+    var bar = $('#helpers'); if (!bar) return;
+    bar.hidden = !state || state.mode === 'tutorial' || state.mode === 'weekly' || !(FLAGS.helpers || (FLAGS.zenNew && state.mode === 'zen'));
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-h]'), function (b) { b.hidden = !FLAGS.helpers; });
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-h]'), function (b) {
+      var k = b.getAttribute('data-h'), n = helperCount(k);
+      b.querySelector('b').textContent = n; b.classList.toggle('empty', !n); b.classList.toggle('on', helperMode === k);
+      b.setAttribute('aria-pressed', String(helperMode === k));
+    });
+    boardBox.classList.toggle('hammer-mode', helperMode === 'hammer'); $('#tray').classList.toggle('rotate-mode', helperMode === 'rotate');
+  }
+  function useHelper(k) {
+    stats.helpers[k] = Math.max(0, helperCount(k) - 1); saveStats();
+    lastSnap = null; lastStatsSnap = null; // ajuda não se desfaz
+    helperMode = null; zenHist = []; updateHelpers(); updateHud(); saveGame();
+  }
+  function shapeKey(cells) {
+    var mr = Math.min.apply(null, cells.map(function (x) { return x[0]; })), mc = Math.min.apply(null, cells.map(function (x) { return x[1]; }));
+    return cells.map(function (x) { return (x[0] - mr) + ',' + (x[1] - mc); }).sort().join(' ');
+  }
+  function rotatedShape(id) {
+    if (!shapeKeyMap) { shapeKeyMap = {}; SHAPES.forEach(function (sh) { var k = shapeKey(sh.cells); if (shapeKeyMap[k] == null) shapeKeyMap[k] = sh.id; }); }
+    var sh = SHAPES[id], rot = sh.cells.map(function (x) { return [x[1], sh.h - 1 - x[0]]; }), k = shapeKey(rot), to = shapeKeyMap[k];
+    if (to == null || to === id) return null;
+    var nsh = SHAPES[to], map = rot.map(function (x) { var mr = Math.min.apply(null, rot.map(function (y) { return y[0]; })), mc = Math.min.apply(null, rot.map(function (y) { return y[1]; }));
+      var t = (x[0] - mr) + ',' + (x[1] - mc); for (var j = 0; j < nsh.cells.length; j++) if (nsh.cells[j][0] + ',' + nsh.cells[j][1] === t) return j; return 0; });
+    return { id: to, map: map };
+  }
+  function helperTap(k) {
+    if (!helpersOn() || locked) return;
+    Sound.unlock(); Sound.tap();
+    if (helperMode === k) { helperMode = null; updateHelpers(); return; } // tocar de novo cancela
+    if (!helperCount(k)) { toast(HELP[k].icon + ' ' + T('Sem {name}', { name: T(HELP[k].name) }), T('Complete as missões do dia para ganhar ajudas.')); return; }
+    if (k === 'hint') { doHint(); return; }
+    helperMode = k; updateHelpers(); toast(HELP[k].icon + ' ' + T(HELP[k].name), T(HELP[k].tip));
+  }
+  function hammerAt(r, c) {
+    var i = r * SIZE + c, col = state.board[i]; if (col < 0) return false;
+    state.board[i] = -1;
+    if (state.rare) delete state.rare[i]; if (state.spec) delete state.spec[i]; if (state.pkAge) delete state.pkAge[i];
+    if (settings.anim !== 'off') anims.push({ type: 'clear', cells: [{ r: r, c: c, color: col, d: 0 }], theme: boardTheme(), skin: null, start: animNow(), cellDur: 420, dur: 420 });
+    Sound.clear(1, 0, null); haptic('place'); shake(false);
+    useHelper('hammer'); drawTray(false); requestRender();
+    announce(T('Martelo: bloco quebrado.'));
+    return true;
+  }
+  function rotateSlot(i) {
+    var p = state.pieces[i]; if (!p) return;
+    var rot = rotatedShape(p.s);
+    if (!rot) { toast('🔄 ' + T('Girar'), T('Essa peça fica igual girando. Escolha outra.')); return; }
+    p.s = rot.id;
+    if (p.sp) p.sp.k = rot.map[p.sp.k] || 0; if (p.rk) p.rk.k = rot.map[p.rk.k] || 0;
+    Sound.transform(false); haptic('pick');
+    useHelper('rotate'); drawTray(false);
+    var sl = slots[i]; sl.classList.remove('morph'); void sl.offsetWidth; sl.classList.add('morph');
+    announce(T('Peça girada.'));
+  }
+  function doHint() {
+    var best = null;
+    state.pieces.forEach(function (p, i) {
+      if (!p) return; var sh = SHAPES[p.s];
+      for (var r = 0; r <= SIZE - sh.h; r++) for (var c = 0; c <= SIZE - sh.w; c++) {
+        if (!Logic.canPlace(state.board, sh, r, c)) continue;
+        var fl = Logic.previewLines(state.board, sh, r, c), lines = fl.rows.length + fl.cols.length, snug = 0;
+        sh.cells.forEach(function (x) { var rr = r + x[0], cc = c + x[1]; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var a = rr + d[0], b = cc + d[1]; if (a < 0 || b < 0 || a >= SIZE || b >= SIZE || state.board[a * SIZE + b] >= 0) snug++; }); });
+        var sc = lines * 100 + snug + sh.cells.length * 0.5;
+        if (!best || sc > best.sc) best = { sc: sc, i: i, r: r, c: c, sh: sh, lines: lines };
+      }
+    });
+    if (!best) { toast('💡 ' + T('Dica'), T('Nenhuma peça cabe agora.')); return; }
+    anims = anims.filter(function (a) { return a.type !== 'hint'; });
+    anims.push({ type: 'hint', cells: best.sh.cells.map(function (x) { return [best.r + x[0], best.c + x[1]]; }), start: animNow(), dur: 3200 });
+    var sl = slots[best.i]; sl.classList.remove('hinted'); void sl.offsetWidth; sl.classList.add('hinted'); later(function () { sl.classList.remove('hinted'); }, 3200);
+    Sound.tap(); useHelper('hint'); requestRender();
+    toast('💡 ' + T('Dica'), best.lines ? T('Essa peça ali limpa {n}!', { n: best.lines }) : T('Essa peça encaixa bem ali.'));
+  }
+  function giveHelper(from) { // v1.26: missão concluída = +1 ajuda (alterna Martelo → Girar → Dica)
+    var k = ['hammer', 'rotate', 'hint'][(stats.helperGift || 0) % 3]; stats.helperGift = (stats.helperGift || 0) + 1;
+    stats.helpers[k] = Math.min(9, helperCount(k) + 1); saveStats(); updateHelpers(); return k;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#helpers [data-h]'), function (b) {
+    b.addEventListener('click', function () { helperTap(b.getAttribute('data-h')); });
+  });
+  /* ---------------- v1.26 (dono): ZEN NOVO — jardim que cresce, quadro pintado pelas linhas, desfazer e trocar à vontade ---------------- */
+  var ZEN_PAL = ['#f6b8c4', '#ffd6a5', '#fdf3a7', '#c5ecc0', '#a8dcef', '#c7c3f5', '#f4c6ec', '#b9e7dc'];
+  var ZEN_PLANT = 12, zenHist = [], zenDrawn = '';
+  function zenOn() { return FLAGS.zenNew && !!state && state.mode === 'zen'; }
+  function zenData() { if (!stats.zen || typeof stats.zen !== 'object') stats.zen = { garden: 0, art: [] }; if (!Array.isArray(stats.zen.art)) stats.zen.art = []; stats.zen.garden = Math.max(0, +stats.zen.garden || 0); return stats.zen; }
+  function zenHash(n) { var x = Math.sin(n * 91.7 + 17.3) * 43758.5453; return x - Math.floor(x); }
+  /** Desenha o jardim (g = linhas limpas no Zen, para sempre). Usado na partida e na Coleção. */
+  function drawGarden(cv, g) {
+    var dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth || cv.width / dpr, H = cv.clientHeight || cv.height / dpr;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    var c2 = cv.getContext('2d'); c2.setTransform(dpr, 0, 0, dpr, 0, 0); c2.clearRect(0, 0, W, H);
+    var sky = c2.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, 'rgba(255,240,250,.16)'); sky.addColorStop(1, 'rgba(200,240,220,.10)');
+    c2.fillStyle = sky; Themes.roundRect(c2, 0, 0, W, H, 14); c2.fill();
+    var ground = H * 0.8;
+    c2.save(); Themes.roundRect(c2, 0, 0, W, H, 14); c2.clip();
+    c2.fillStyle = '#7bbf7a'; c2.beginPath(); c2.moveTo(0, H); c2.lineTo(0, ground);
+    for (var x = 0; x <= W; x += 8) c2.lineTo(x, ground + Math.sin(x / 23) * 2.5); c2.lineTo(W, H); c2.closePath(); c2.fill();
+    c2.fillStyle = '#5ea66a'; for (var gx = 4; gx < W; gx += 9) c2.fillRect(gx, ground + 2 + zenHash(gx) * 4, 1.5, 3); // grama
+    var n = Math.min(ZEN_PLANT, 1 + Math.floor(g / 12));
+    for (var i = 0; i < n; i++) {
+      var grow = Math.max(0.12, Math.min(1, (g - i * 12) / 12)), slot = (i * 5) % ZEN_PLANT; // novas plantas nascem espalhadas
+      var px0 = W * (slot + 0.5) / ZEN_PLANT + (zenHash(i) - 0.5) * W / ZEN_PLANT * 0.5, maxH = H * (0.5 + 0.22 * zenHash(i + 9)), ph = maxH * grow, kind = i % 5;
+      c2.strokeStyle = '#4f9a58'; c2.lineWidth = 2; c2.lineCap = 'round';
+      c2.beginPath(); c2.moveTo(px0, ground + 2); c2.quadraticCurveTo(px0 + 3, ground - ph / 2, px0, ground - ph); c2.stroke(); // caule
+      c2.fillStyle = '#6cc070';
+      [0.35, 0.6].forEach(function (f, k) { if (grow < f - 0.2) return; var ly = ground - ph * f, d = k ? -1 : 1; c2.beginPath(); c2.ellipse(px0 + d * 5, ly, 5.5, 2.4, d * -0.5, 0, 7); c2.fill(); }); // folhas
+      var top = ground - ph, col = ZEN_PAL[(i * 3) % ZEN_PAL.length];
+      if (grow < 0.7) { c2.fillStyle = '#8fd18f'; c2.beginPath(); c2.ellipse(px0, top, 2.5, 3.5, 0, 0, 7); c2.fill(); continue; } // broto
+      var bloom = grow >= 1 ? 1 : 0.55, r = 6.5 * bloom;
+      if (kind === 0) { c2.fillStyle = col; c2.beginPath(); c2.moveTo(px0 - r, top - r * 0.2); c2.quadraticCurveTo(px0, top + r * 1.4, px0 + r, top - r * 0.2); c2.lineTo(px0 + r * 0.5, top - r); c2.lineTo(px0, top - r * 0.4); c2.lineTo(px0 - r * 0.5, top - r); c2.closePath(); c2.fill(); } // tulipa
+      else if (kind === 1 || kind === 2) { // margarida / girassol
+        c2.fillStyle = kind === 2 ? '#ffd45c' : '#fffaf0';
+        for (var pp = 0; pp < 8; pp++) { var a = pp / 8 * Math.PI * 2; c2.beginPath(); c2.ellipse(px0 + Math.cos(a) * r * 0.7, top + Math.sin(a) * r * 0.7, r * 0.45, r * 0.22, a, 0, 7); c2.fill(); }
+        c2.fillStyle = kind === 2 ? '#8a5a2b' : '#f5c04a'; c2.beginPath(); c2.arc(px0, top, r * 0.35, 0, 7); c2.fill();
+      } else if (kind === 3) { c2.fillStyle = '#b79cf0'; for (var lv = 0; lv < 5; lv++) { c2.beginPath(); c2.arc(px0 + (lv % 2 ? 1.6 : -1.6), top + lv * 3 * bloom, 2.4 * bloom + 0.6, 0, 7); c2.fill(); } } // lavanda
+      else { c2.fillStyle = '#5fb36a'; c2.beginPath(); c2.arc(px0, top + 2, r * 0.95, 0, 7); c2.fill(); c2.fillStyle = col; [[-3, 0], [3, 2], [0, -3]].forEach(function (o) { c2.beginPath(); c2.arc(px0 + o[0] * bloom, top + 2 + o[1] * bloom, 1.8, 0, 7); c2.fill(); }); } // arbusto com frutinhas
+    }
+    var bf = g >= ZEN_PLANT * 12 + 12 ? Math.min(4, 1 + Math.floor((g - ZEN_PLANT * 12 - 12) / 40)) : 0; // borboletas no jardim completo
+    for (var b = 0; b < bf; b++) { var bx = W * (0.15 + 0.7 * zenHash(b + 40)), by = H * (0.18 + 0.25 * zenHash(b + 50)); c2.fillStyle = ZEN_PAL[(b * 2 + 5) % 8]; c2.beginPath(); c2.ellipse(bx - 3, by, 3, 2.2, -0.5, 0, 7); c2.ellipse(bx + 3, by, 3, 2.2, 0.5, 0, 7); c2.fill(); }
+    c2.restore();
+  }
+  /** Desenha um quadro (64 casas: '.' = sem tinta, '0'..'7' = cor pastel). */
+  function drawArt(cv, art) {
+    var dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth || cv.width / dpr;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = cv.height = Math.round(W * dpr); }
+    var c2 = cv.getContext('2d'); c2.setTransform(dpr, 0, 0, dpr, 0, 0); c2.clearRect(0, 0, W, W);
+    var fr = Math.max(3, W * 0.07), inner = W - fr * 2, k = inner / SIZE;
+    c2.fillStyle = '#b98a5a'; Themes.roundRect(c2, 0, 0, W, W, W * 0.1); c2.fill(); // moldura de madeira
+    c2.fillStyle = '#fbf6ec'; c2.fillRect(fr, fr, inner, inner); // tela
+    for (var i = 0; i < SIZE * SIZE; i++) {
+      var d = art ? art.charAt(i) : '.'; if (d === '.' || d === '') continue;
+      c2.globalAlpha = 0.8 + 0.2 * zenHash(i); c2.fillStyle = ZEN_PAL[+d % ZEN_PAL.length];
+      Themes.roundRect(c2, fr + (i % SIZE) * k - 0.3, fr + Math.floor(i / SIZE) * k - 0.3, k + 0.6, k + 0.6, k * 0.3); c2.fill();
+    }
+    c2.globalAlpha = 1;
+  }
+  function zenArtNow() { return state && typeof state.art === 'string' && state.art.length === SIZE * SIZE ? state.art : new Array(SIZE * SIZE + 1).join('.'); }
+  function syncZenUi() {
+    var on = zenOn() && screenIs('game');
+    $('#screen-game').classList.toggle('zen-mode', zenOn());
+    $('#zen-bar').hidden = !zenOn();
+    Array.prototype.forEach.call(document.querySelectorAll('#helpers .zen-only'), function (b) { b.hidden = !zenOn(); });
+    if (Sound.setCalm) Sound.setCalm(on);
+    if (!zenOn()) return;
+    var key = zenData().garden + '|' + zenArtNow() + '|' + ($('#zen-garden').clientWidth || 0);
+    if (key === zenDrawn) return; zenDrawn = key;
+    drawGarden($('#zen-garden'), zenData().garden); drawArt($('#zen-art'), zenArtNow());
+    var plants = Math.min(ZEN_PLANT, 1 + Math.floor(zenData().garden / 12));
+    $('#zen-garden').setAttribute('aria-label', T('Seu jardim: {n} plantas', { n: plants }));
+  }
+  /** Linhas limpas no Zen: o jardim cresce e o quadro ganha tinta onde os blocos estavam. */
+  function zenGrow(res) {
+    var z = zenData(), before = Math.min(ZEN_PLANT, 1 + Math.floor(z.garden / 12));
+    z.garden += res.lineCount;
+    var art = zenArtNow().split('');
+    res.cleared.forEach(function (o) { art[o.r * SIZE + o.c] = String(((o.color % 8) + 8) % 8); });
+    state.art = art.join('');
+    if (state.art.indexOf('.') === -1) { // quadro pronto → vai para a galeria
+      z.art.unshift(state.art); if (z.art.length > 40) z.art.length = 40; state.art = null;
+      later(function () { toast('🖼️ ' + T('Quadro pronto!'), T('Ele foi guardado na Coleção. Um quadro novo começa agora.')); }, 700);
+    }
+    if (Math.min(ZEN_PLANT, 1 + Math.floor(z.garden / 12)) > before) { var gc = $('#zen-garden'); gc.classList.remove('grow'); void gc.offsetWidth; gc.classList.add('grow'); }
+    saveStats();
+  }
+  function zenSwap() { // trocar as peças à vontade (só no Zen)
+    if (!zenOn() || locked || state.over) return;
+    Sound.unlock(); Sound.tap();
+    zenHist.push({ snap: JSON.stringify(state), stats: JSON.stringify(stats) }); if (zenHist.length > 30) zenHist.shift();
+    state.pieces = Logic.generatePieces(state.board, Math.random, Logic.ctxOf(state));
+    state.pieces.forEach(function (p) { if (p) p.rq = 1; });
+    lastSnap = null; drawTray(true); updateHud(); saveGame(); announce(T('Peças trocadas.'));
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#helpers [data-z]'), function (b) { b.addEventListener('click', zenSwap); });
+
+  boardBox.addEventListener('pointerdown', function (e) { // martelo: toque no bloco
+    if (helperMode !== 'hammer' || !state) return;
+    var rect = boardCanvas.getBoundingClientRect(), c = Math.floor((e.clientX - rect.left - L.pad) / L.cell), r = Math.floor((e.clientY - rect.top - L.pad) / L.cell);
+    e.preventDefault(); e.stopPropagation();
+    if (r < 0 || c < 0 || r >= SIZE || c >= SIZE || state.board[r * SIZE + c] < 0) { toast('🔨 ' + T('Martelo'), T('Toque num bloco (não numa casa vazia).')); return; }
+    hammerAt(r, c);
+  }, true);
+  $('#tray').addEventListener('pointerdown', function (e) { // girar: toque na peça
+    if (helperMode !== 'rotate' || !state) return;
+    var sl = e.target.closest && e.target.closest('.slot'); if (!sl) return;
+    e.preventDefault(); e.stopPropagation(); rotateSlot(+sl.getAttribute('data-i'));
+  }, true);
 
   /* ---------------- arrastar e soltar ---------------- */
   slots.forEach(function (slot, i) {
@@ -860,7 +1105,7 @@
     var th = boardTheme();
     shape.cells.forEach(function (sc) { dctx.drawImage(sprite(th, piece.c, px), sc[1] * cell, sc[0] * cell, cell, cell); });
     if (piece.sp && shape.cells[piece.sp.k]) drawSpecialOn(dctx, piece.sp.t, shape.cells[piece.sp.k][1] * cell, shape.cells[piece.sp.k][0] * cell, cell, px);
-    if (piece.rk && shape.cells[piece.rk.k]) dctx.drawImage(rareSprite(piece.rk.t, px), shape.cells[piece.rk.k][1] * cell, shape.cells[piece.rk.k][0] * cell, cell, cell);
+    if (piece.rk) rareCellsOf(piece).forEach(function (rc) { drawRare(dctx, rc[1], shape.cells[rc[0]][1] * cell, shape.cells[rc[0]][0] * cell, cell, px, 0, rc[0]); });
   }
   function repaintHeldPiece() {
     if (!drag || drag.kb || dragCanvas.hidden) return;
@@ -1088,17 +1333,19 @@
     var statsSnap = snap ? JSON.stringify(stats) : null;
     var prevCombo = state.combo || 0;
     var placedPiece = state.pieces[slot];
-    var res = Logic.place(state, slot, r, c, rngFor(state));
-    if (!res) return false;
-    if (placedPiece && placedPiece.rk && SHAPES[placedPiece.s].cells[placedPiece.rk.k]) { // v1.24: bloco raro vai para o tabuleiro
-      var rc = SHAPES[placedPiece.s].cells[placedPiece.rk.k], rIdx = (r + rc[0]) * SIZE + c + rc[1];
-      state.rare = state.rare || {}; state.rare[rIdx] = placedPiece.rk.t;
+    var rkSet = [];
+    if (placedPiece && placedPiece.rk && SHAPES[placedPiece.s].cells[placedPiece.rk.k] && Logic.canPlace(state.board, SHAPES[placedPiece.s], r, c)) { // v1.24: bloco raro vai para o tabuleiro
+      state.rare = state.rare || {}; // v1.26: antes da jogada, para o poder do lendário valer na mesma jogada
+      rareCellsOf(placedPiece).forEach(function (rv) { var rc = SHAPES[placedPiece.s].cells[rv[0]], ix = (r + rc[0]) * SIZE + c + rc[1]; state.rare[ix] = rv[1]; rkSet.push(ix); }); // v1.26: peça inteira lendária
     }
+    var res = Logic.place(state, slot, r, c, rngFor(state));
+    if (!res) { rkSet.forEach(function (ix) { delete state.rare[ix]; }); return false; }
     var rareGone = [], lastRareKinds = {};
     if (state.rare) Object.keys(state.rare).forEach(function (k) { if (state.board[+k] < 0) { rareGone.push(+k); lastRareKinds[+k] = state.rare[k]; delete state.rare[k]; } });
     tagRares();
     if (state.mode === 'weekly') state.moves = (state.moves || '') + String.fromCharCode(Weekly.packMove(slot, r, c)); // prova da partida
     if (snap) { lastSnap = snap; lastStatsSnap = statsSnap; }
+    if (snap && zenOn()) { zenHist.push({ snap: snap, stats: statsSnap }); if (zenHist.length > 30) zenHist.shift(); } // v1.26: Zen desfaz à vontade
     if (!res.lineCount) announce(T('Peça colocada.'));
     var now = animNow(), lvl = settings.anim, th = boardTheme(), geo = { cell: L.cell, pad: L.pad, size: L.size };
     var colorOf = function (ci) { if (evGame()) return ['#ff8a1f', '#9b4dff', '#ffb347', '#6a2fd1'][ci % 4]; var p = pal(th); return p[ci % p.length]; }; // v1.25: faíscas assombradas no evento
@@ -1145,6 +1392,17 @@
       later(function () { Sound.star && Sound.star(); }, 260);
       var rareTxt = rareGone.filter(function (ri) { return lastRareKinds[ri] !== 'pk'; })[0]; // v1.25: abóbora já tem contador e quebra própria — sem texto extra
       if (rareTxt != null) popup('✨ ' + rareName(lastRareKinds[rareTxt]), [Math.floor(rareTxt / SIZE), rareTxt % SIZE], 'pts-small', 0.6, false, 250);
+      var legGone = rareGone.filter(function (ri) { return Season.legendOf(lastRareKinds[ri]); }); // v1.26: explosão própria de cada lendário (nas cores dele)
+      if (legGone.length) {
+        if (partsOn()) legGone.slice(0, 6).forEach(function (ri, n) { var lg = Season.legendOf(lastRareKinds[ri]); (LEG_COL[lg.id] || ['#fff']).forEach(function (col, j) { anims.push(Fx.sparks([[Math.floor(ri / SIZE), ri % SIZE]], col, geo, now + 140 + n * 50 + j * 90, anims)); }); });
+        if (lvl !== 'off') legGone.slice(0, 6).forEach(function (ri, n) { anims.push({ type: 'legendBurst', r: Math.floor(ri / SIZE), c: ri % SIZE, id: Season.legendOf(lastRareKinds[ri]).id, start: now + n * 40, dur: 650 }); });
+        haptic('place');
+      }
+    }
+    if (res.special && res.special.legend && res.special.legend.length) { // v1.26: poderes dos lendários
+      var PW_TXT = { z: '⚡ ' + T('Raio!'), d: '💎 ' + T('Diamante!'), k: '👑 ' + T('Coroa: jogada em dobro!'), r: '🌈 ' + T('Arco-íris!') };
+      res.special.legend.forEach(function (lp, n) { popup(PW_TXT[lp.pw], [lp.r, lp.c], 'pts-small', 0.9, false, 420 + n * 300); });
+      later(function () { Sound.record && Sound.record(); }, 380);
     }
 
     if (res.gems && res.gems.length) { // v1.17: gemas coletadas — brilho, faíscas e "+1" na casa
@@ -1308,7 +1566,7 @@
 
   /* ---------------- transformações surpresa (decisão em js/surprise.js) ---------------- */
   function surpriseAfterMove(res, record, prevCombo) {
-    if (!state || state.mode === 'tutorial') return;
+    if (!state || state.mode === 'tutorial' || state.mode === 'zen') return; // v1.26 (dono): Zen 100% limpo — sem transformações surpresa
     if (!state.look || typeof state.look !== 'object') state.look = { skin: null, left: 0, last: [], since: 99 };
     var look = state.look;
     if (!Array.isArray(look.last)) look.last = [];
@@ -1368,7 +1626,8 @@
     var discovered = false;
     if (skin) {
       stats.surprises = (stats.surprises || 0) + 1;
-      if (Skins.rareIds.indexOf(skin) !== -1 && !stats.surpriseSeen[skin]) { stats.surpriseSeen[skin] = 1; discovered = true; } // estilo raro descoberto (vai para a Coleção)
+      var seenKey = evGame() ? 'hw-' + skin : skin; // Halloween conta separado
+      if (!stats.surpriseSeen[seenKey]) { stats.surpriseSeen[seenKey] = 1; discovered = true; } // v1.25.1 (dono): aviso só na 1ª vez que vê o estilo
       saveStats();
     }
     var big = !!(d && d.big) && settings.fx === 'full'; // efeitos reduzidos: troca simples, sem brilho extra
@@ -1382,7 +1641,7 @@
     slots.forEach(function (sl) { sl.classList.remove('morph'); void sl.offsetWidth; sl.classList.add('morph'); });
     if (skin) {
       Sound.transform(big);
-      toast('✦ ' + eventTitle(d && d.event), discovered ? T('Novo estilo descoberto: {name}', { name: skinName(skin) }) : T('Blocos: {name}', { name: skinName(skin) })); // um aviso só, dizendo o que foi conquistado
+      if (discovered) toast('✦ ' + eventTitle(d && d.event), T('Novo estilo descoberto: {name}', { name: skinName(skin) })); // v1.25.1: só na primeira vez
       announce(T('Os blocos se transformaram: {name}.', { name: skinName(skin) }));
     }
     if (!locked && !state.over) saveGame();
@@ -1421,6 +1680,7 @@
 
   var bigUntil = 0; // v1.25: uma mensagem grande por vez — a próxima espera a anterior sumir
   function popup(text, origin, cls, dy, html, delayMs) {
+    if (state && state.mode === 'zen') return; // v1.26 (dono): Zen 100% limpo — sem pontos voando, elogios nem combo
     if (/(^|\s)(praise|combo-big|big|level)(\s|$)/.test(cls || '')) {
       var nowMs = Date.now(), at = nowMs + (delayMs || 0);
       if (at < bigUntil) { if (bigUntil - nowMs > 3000) return; delayMs = bigUntil - nowMs; at = bigUntil; } // fila longa demais: pula
@@ -1567,6 +1827,7 @@
     paintBg();
     Sound.setTheme(to);
     updateThemeBar();
+    var firstLook = !stats.themesSeen[to.id]; // v1.25.1 (dono): aviso de visual novo só na PRIMEIRA vez que a pessoa vê aquele fundo
     if (state && state.mode && state.mode !== 'tutorial' && !(state.mode === 'zen' && state.reliefs) && !stats.themesSeen[to.id]) {
       stats.themesSeen[to.id] = 1; saveStats(); reportAchievements();
     }
@@ -1575,11 +1836,11 @@
         anims = anims.filter(function (a) { return a.type !== 'sweep'; });
         anims.push({ type: 'sweep', from: from, to: to, start: animNow(), dur: settings.anim === 'full' ? 1000 : 360 });
       }
-      toast('✦ ' + T('Novo visual: {name}', { name: T(to.name) }), T(to.msg));
-      announce(T('Novo visual: {name}', { name: T(to.name) }) + '.');
-      Sound.transform(true);
-      haptic('reward');
-      if (settings.anim !== 'off' && settings.fx === 'full') { // clarão suave na tela inteira + confete nas cores novas
+      var zenQuiet = state && state.mode === 'zen';
+      if (firstLook && !zenQuiet) toast('✦ ' + T('Novo visual: {name}', { name: T(to.name) }), T(to.msg));
+      announce(T('Visual: {name}', { name: T(to.name) }) + '.');
+      if (!zenQuiet) { Sound.transform(true); haptic('reward'); }
+      if (settings.anim !== 'off' && settings.fx === 'full' && !zenQuiet) { // clarão suave na tela inteira + confete nas cores novas
         var fl = $('#theme-flash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
         if (partsOn() && screenIs('game')) anims.push(Fx.confetti(pal(to), { cell: L.cell, pad: L.pad, size: L.size }, animNow(), 60, anims));
       }
@@ -1680,7 +1941,7 @@
     if (list.length === 1) { toast(list[0].title, list[0].text, list[0].kind === 'trophy' ? 'trophy' : ''); return; }
     toast(T('{n} novidades nesta partida', { n: list.length }), list.slice(0, 3).map(function (r) { return r.title; }).join(' · '), 'trophy');
   }
-  function reportMissions(list) { (list || []).forEach(function (m) { reward('mission', T('Missão concluída ★'), T(m.text) + ' · +25 XP'); gainXp(25); }); }
+  function reportMissions(list) { (list || []).forEach(function (m) { var hk = FLAGS.helpers ? giveHelper() : null; reward('mission', T('Missão concluída ★'), T(m.text) + ' · +25 XP' + (hk ? ' · +1 ' + HELP[hk].icon + ' ' + T(HELP[hk].name) : '')); gainXp(25); }); }
   /* v1.24: XP do jogador e sequência de dias */
   function gainXp(n) {
     var r = Season.addXp(stats, n);
@@ -1784,10 +2045,10 @@
   function cancelLater() { timers.forEach(clearTimeout); timers = []; clearTimeout(gameOverTimer); }
   function resetBoardUi() {
     cancelLater();
-    locked = false; anims = []; drag = null; lastSnap = null; lastStatsSnap = null; tutTarget = null;
+    locked = false; anims = []; drag = null; lastSnap = null; lastStatsSnap = null; tutTarget = null; zenHist = [];
     dragCanvas.hidden = true;
     slots.forEach(function (s) { s.classList.remove('dragging', 'shake', 'kb-selected'); });
-    fx.innerHTML = ''; bigUntil = 0;
+    fx.innerHTML = ''; bigUntil = 0; helperMode = null;
     $('#coach').hidden = true;
     closeAllOverlays();
   }
@@ -1835,8 +2096,8 @@
     if (!state.themeId) state.themeId = THEMES[0].id; // toda partida nova começa no visual Clássico
     themeIdx = Themes.indexOfId(state.themeId);
     applyTheme(themeIdx, false);
-    if (state.rare && typeof state.rare === 'object') Object.keys(state.rare).forEach(function (k) { var i = +k; if (!(Number.isInteger(i) && i >= 0 && i < SIZE * SIZE) || !/^(r[1-3]|pk)$/.test(state.rare[k]) || (state.rare[k] === 'pk' && state.mode !== 'event')) delete state.rare[k]; }); else delete state.rare; // v1.25: gaiola do morcego só no modo Evento (partidas salvas antigas perdem a abóbora/gaiola)
-    state.pieces.forEach(function (p) { if (p && p.rk && (!(/^(r[1-3]|pk)$/.test(p.rk.t) && SHAPES[p.s].cells[p.rk.k]) || (p.rk.t === 'pk' && state.mode !== 'event'))) delete p.rk; });
+    if (state.rare && typeof state.rare === 'object') Object.keys(state.rare).forEach(function (k) { var i = +k; if (!(Number.isInteger(i) && i >= 0 && i < SIZE * SIZE) || !(/^(r[1-3]|pk)$/.test(state.rare[k]) || (Season.legendOf(state.rare[k]) && state.mode === 'classic')) || (state.rare[k] === 'pk' && state.mode !== 'event')) delete state.rare[k]; }); else delete state.rare; // v1.25: gaiola do morcego só no modo Evento (partidas salvas antigas perdem a abóbora/gaiola)
+    state.pieces.forEach(function (p) { if (p && p.rk && (!((/^(r[1-3]|pk)$/.test(p.rk.t) || (Season.legendOf(p.rk.t) && state.mode === 'classic')) && SHAPES[p.s].cells[p.rk.k]) || (p.rk.t === 'pk' && state.mode !== 'event'))) delete p.rk; });
     tagRares();
     displayedScore = state.score;
     $('#score').textContent = fmt(state.score);
@@ -1866,6 +2127,8 @@
     chip.setAttribute('title', T('Multiplicador ×{m}', { m: multText(lv) }));
   }
   function updateHud() {
+    updateHelpers(); // v1.26
+    syncZenUi(); // v1.26: Zen novo
     updateLevelChip();
     if (!state) return;
     updateBoardMood();
@@ -1888,10 +2151,10 @@
 
     var u = $('#btn-undo'), canUndo = m !== 'tutorial' && m !== 'daily' && m !== 'weekly';
     u.hidden = !canUndo;
-    u.disabled = !lastSnap || state.undoLeft <= 0 || locked;
-    $('#undo-count').textContent = Math.max(0, state.undoLeft);
+    u.disabled = zenOn() ? !canUndoNow() : (!lastSnap || state.undoLeft <= 0 || locked);
+    $('#undo-count').textContent = zenOn() ? '∞' : Math.max(0, state.undoLeft);
     $('#undo-count').hidden = u.disabled; // v1.16 (QA): sem jogada para desfazer (ex.: após reabrir), o contador some
-    u.setAttribute('aria-label', T('Desfazer última jogada ({n} restante)', { n: Math.max(0, state.undoLeft) }));
+    u.setAttribute('aria-label', zenOn() ? T('Desfazer (à vontade no Zen)') : T('Desfazer última jogada ({n} restante)', { n: Math.max(0, state.undoLeft) }));
 
     var gb = $('#goal-bar');
     if (m === 'challenge') {
@@ -1937,10 +2200,12 @@
     if (m !== 'tutorial' && stats.streak && stats.streak.last !== today()) touchStreak(); // v1.24: conta também quem só continua partida salva
     // no Zen, depois do primeiro alívio os pontos não valem para conquistas de pontos (seria fácil demais)
     reportMissions(Progress.onMove(stats, res, m === 'zen' && state.reliefs ? null : state));
+    if (zenOn() && res.lineCount) zenGrow(res); // v1.26: jardim e quadro
     if ((m === 'classic' || m === 'zen' || m === 'daily' || m === 'weekly') && state.score > bestFor(m)) setBest(m, state.score);
     if (m === 'classic' || m === 'zen' || m === 'daily') Season.unlockRares(stats, state.score).forEach(function (rr) { // v1.24: bloco raro liberado
       reward('trophy', T('Bloco raro liberado: {name}!', { name: T(rr.name) }), T('A partir de agora ele aparece às vezes nas suas peças. Limpe para ver o brilho!'));
     });
+    if (m === 'classic' && FLAGS.legends) { var newLeg = Season.unlockLegends(stats, state.score); if (newLeg.length) { legendQ = legendQ.concat(newLeg); later(showLegendUnlock, 900); } } // v1.26: lendário liberado = tela cheia
     reportAchievements();
     reportUnlocks(before);
     saveStats();
@@ -1977,7 +2242,7 @@
   }
 
   function comboText(n) { return n >= 2 ? '×' + n : '—'; }
-  function canUndoNow() { return !!lastSnap && state && state.undoLeft > 0 && modeOf() !== 'daily' && modeOf() !== 'weekly' && !state.nightmare; } // v1.25: Pesadelo sem desfazer
+  function canUndoNow() { if (zenOn()) return zenHist.length > 0 && !locked; return !!lastSnap && state && state.undoLeft > 0 && modeOf() !== 'daily' && modeOf() !== 'weekly' && !state.nightmare; } // v1.25: Pesadelo sem desfazer
 
   function showGameOver() {
     var m = modeOf(), score = state.score;
@@ -1986,8 +2251,9 @@
     haptic('gameover');
     if (m === 'zen') {
       showResult({
-        title: T('Sem encaixes'), big: fmt(score), sub: T('No Zen a partida não acaba. Limpe as 3 linhas mais cheias e siga jogando.'),
-        stats: [[fmt(state.lines), T('linhas')], [comboText(state.maxCombo), T('maior combo')], [fmt(bestFor('zen')), T('recorde Zen')]],
+        title: T('Sem encaixes'), big: zenOn() ? '🌱 ' + fmt(Math.min(ZEN_PLANT, 1 + Math.floor(zenData().garden / 12))) : fmt(score), sub: T('No Zen a partida não acaba. Limpe as 3 linhas mais cheias e siga jogando.'), // v1.26: Zen sem placar (só com o Zen novo ligado)
+        stats: zenOn() ? [[fmt(state.lines), T('linhas')], [fmt(Math.min(ZEN_PLANT, 1 + Math.floor(zenData().garden / 12))), T('plantas no jardim')], [fmt(zenData().art.length), T('quadros')]]
+          : [[fmt(state.lines), T('linhas')], [comboText(state.maxCombo), T('maior combo')], [fmt(bestFor('zen')), T('recorde Zen')]],
         buttons: [
           { label: T('Limpar e continuar'), cls: 'primary big', fn: zenContinue },
           canUndoNow() ? { label: T('Desfazer última jogada'), fn: undo } : null,
@@ -2032,7 +2298,7 @@
       buttons: [
         canRevive() ? { label: T('Continuar: 3 peças novas (grátis, 1×)'), cls: 'primary big revive', fn: revive } : null,
         { label: T('Jogar novamente'), cls: canRevive() ? '' : 'primary big', fn: function () { startGame(m); } },
-        canUndoNow() ? { label: T('Desfazer última jogada ({n})', { n: state.undoLeft }), fn: undo } : null,
+        canUndoNow() ? { label: zenOn() ? T('Desfazer') : T('Desfazer última jogada ({n})', { n: state.undoLeft }), fn: undo } : null,
         { label: T('Compartilhar resultado'), fn: function () { shareResult(); } },
         { label: T('Tela inicial'), cls: 'ghost-dark', fn: goHome }
       ]
@@ -2222,7 +2488,8 @@
   /* ---------------- desfazer (1 por partida) ---------------- */
   function undo() {
     if (!canUndoNow()) return;
-    var left = state.undoLeft - 1, snap = JSON.parse(lastSnap);
+    if (zenOn()) { var zh = zenHist.pop(); lastSnap = zh.snap; lastStatsSnap = zh.stats; state.undoLeft = 99; } // v1.26: Zen desfaz à vontade
+    var left = zenOn() ? 99 : state.undoLeft - 1, snap = JSON.parse(lastSnap);
     cancelLater();
     if (lastStatsSnap) { var t = stats.timeMs; stats = Progress.normalize(JSON.parse(lastStatsSnap)); stats.timeMs = t; saveStats(); }
     lastStatsSnap = null;
@@ -2232,7 +2499,7 @@
     themeIdx = Themes.indexOfId(state.themeId); applyTheme(themeIdx, false);
     displayedScore = state.score; $('#score').textContent = fmt(state.score);
     updateComboChip(); updateHud(); drawTray(false); requestRender(); saveGame();
-    toast(T('Jogada desfeita'), left > 0 ? '' : T('Este era o desfazer da partida.'));
+    if (!zenOn()) toast(T('Jogada desfeita'), left > 0 ? '' : T('Este era o desfazer da partida.'));
     announce(T('Jogada desfeita.'));
   }
 
@@ -2256,7 +2523,7 @@
   function zenContinue() {
     closeOverlay('#ov-over');
     var cleared = Logic.zenRelief(state, rngFor(state)), now = animNow();
-    locked = false; lastSnap = null;
+    locked = false; lastSnap = null; zenHist = [];
     anims = anims.filter(function (a) { return a.type !== 'gray'; });
     if (settings.anim !== 'off') {
       var zs = curSkin(), custom = Skins.isCustom(zs), cd = custom ? Skins.breakMs(zs) : 320;
@@ -2469,6 +2736,7 @@
     if (name === 'home') refreshHome();
     else if (!(history.state && history.state.gb)) { try { history.pushState({ gb: 1 }, ''); } catch (e) {} }
     if (window.GBMenus && window.GBMenus.onShow) window.GBMenus.onShow(name);
+    if (Sound.setCalm) Sound.setCalm(name === 'game' && zenOn()); // v1.26: som calmo só na partida Zen
     requestRender();
   }
   function screenIs(name) { return screens[name] && screens[name].classList.contains('active'); }
@@ -2498,9 +2766,7 @@
     $('#home-xp').style.width = Math.round(100 * lv.cur / lv.need) + '%';
     $('#home-streak').hidden = sk < 1; $('#home-streak-n').textContent = sk === 1 ? T('1 dia') : T('{n} dias', { n: sk });
     $('#home-x2').hidden = !Season.isWeekend();
-    if (window.GBHome) window.GBHome.sync(); // v1.24: botões de modo
-    var evh = eventNow(); $('#event-banner').hidden = !evh;
-    if (evh) $('#event-title').textContent = evh.icon + ' ' + T(evh.name) + ' · ' + T('até domingo');
+    if (window.GBHome) window.GBHome.sync(); // v1.26: cartões Zen e Eventos
     $('.home-best').hidden = bestFor('classic') <= 0; // v1.23: sem "Recorde 0" para quem ainda não tem recorde
     var ng = $('#home-next') ? Progress.nextGoal(stats) : null; // v1.14: tela inicial simplificada (sem barra de próximo objetivo)
     if ($('#home-next')) $('#home-next').hidden = !ng;
@@ -2548,7 +2814,36 @@
   function unstickApp() { if (!overlayOpen() && $('#app').hasAttribute('inert')) $('#app').removeAttribute('inert'); }
   document.addEventListener('visibilitychange', unstickApp);
   window.addEventListener('popstate', function () { setTimeout(unstickApp, 0); });
-  function closeAllOverlays() { ['#ov-pause', '#ov-settings', '#ov-over', '#ov-dialog'].forEach(closeOverlay); focusStack = []; }
+  function closeAllOverlays() { ['#ov-pause', '#ov-settings', '#ov-over', '#ov-dialog', '#ov-legend'].forEach(closeOverlay); focusStack = []; }
+  /* v1.26 (dono): bloco lendário liberado — comemoração em tela cheia (uma vez por bloco, para sempre) */
+  var legendQ = [], legendRaf = 0;
+  function showLegendUnlock() {
+    var lg = legendQ.shift(); if (!lg) return;
+    if (overlayOpen() || !screenIs('game')) { reward('trophy', T('Bloco lendário liberado: {name}!', { name: T(lg.name) }), T('Para sempre seu. Ele aparece às vezes nas peças do Clássico.')); showLegendUnlock(); return; }
+    if (drag) endDrag(false);
+    var card = $('#legend-card'); card.innerHTML = '';
+    var mk = function (tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+    card.appendChild(mk('p', 'legend-kicker', '✨ ' + T('Bloco lendário liberado!') + ' ✨'));
+    var cv = mk('canvas', 'legend-art'); var dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = cv.height = Math.round(170 * dpr); card.appendChild(cv);
+    card.appendChild(mk('h2', '', lg.icon + ' ' + T(lg.name))).id = 'legend-title';
+    card.appendChild(mk('p', 'legend-text', T('Você passou de {n} pontos. Este bloco é seu para sempre e aparece às vezes nas suas peças do Clássico — às vezes com poder: ⚡ 💎 👑 🌈', { n: fmt(lg.min) })));
+    var ok = mk('button', 'btn primary big', T('Que demais!')); ok.type = 'button'; card.appendChild(ok);
+    ok.addEventListener('click', function () { cancelAnimationFrame(legendRaf); closeOverlay('#ov-legend'); if (legendQ.length) setTimeout(showLegendUnlock, 300); });
+    openOverlay('#ov-legend');
+    var g = cv.getContext('2d'), t0 = performance.now();
+    (function spin(t) {
+      if ($('#ov-legend').hidden) return;
+      var W = cv.width, k = Math.min(1, (t - t0) / 600), sz = W * 0.62 * (0.4 + 0.6 * (1 - Math.pow(1 - k, 3)));
+      g.clearRect(0, 0, W, W);
+      g.save(); g.translate(W / 2, W / 2); g.rotate(t / 4000); // raios de luz girando
+      for (var i = 0; i < 12; i++) { g.rotate(Math.PI / 6); g.fillStyle = 'rgba(255,215,120,' + (0.10 + 0.06 * Math.sin(t / 300 + i)) + ')'; g.beginPath(); g.moveTo(0, 0); g.lineTo(W * 0.6, -W * 0.06); g.lineTo(W * 0.6, W * 0.06); g.closePath(); g.fill(); }
+      g.restore();
+      if (window.MZLegend) window.MZLegend.draw(g, lg.id, (W - sz) / 2, (W - sz) / 2, sz, legendLite() ? 0 : t, { seed: 3, lite: legendLite() });
+      if (!legendLite() || k < 1) legendRaf = requestAnimationFrame(spin);
+    })(t0);
+    Sound.record(); haptic('place');
+    announce(T('Bloco lendário liberado: {name}!', { name: T(lg.name) }));
+  }
 
   /* ---------------- configurações ---------------- */
   function saveSettings() { store.set('gb.settings', settings); }
@@ -2838,7 +3133,7 @@
     st.appendChild(ok); st.appendChild(no); card.appendChild(st);
     openOverlay('#ov-dialog'); setTimeout(function () { try { ta.focus(); } catch (e) {} }, 80);
   }
-  $('#btn-event').addEventListener('click', function () { Sound.tap(); openEvent(); });
+  // v1.26: o botão do evento agora fica na tela Eventos (menus.js)
   function openEvent() { // v1.24: Desafio do evento (Semana do Terror)
     var ev = eventNow(); if (!ev) return;
     showDialog({ title: ev.icon + ' ' + T(ev.name), list: [
@@ -2923,7 +3218,7 @@
     $(sel).addEventListener('click', function (e) { if (e.target === e.currentTarget) { closeOverlay(sel); settingsReturn = null; } });
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeOverlay('#ov-settings'); closeOverlay('#ov-pause'); closeOverlay('#ov-dialog'); settingsReturn = null; return; }
+    if (e.key === 'Escape') { closeOverlay('#ov-settings'); closeOverlay('#ov-pause'); closeOverlay('#ov-dialog'); closeOverlay('#ov-legend'); settingsReturn = null; return; }
     if (e.key !== 'Tab') return;
     var open = Array.prototype.filter.call(document.querySelectorAll('.overlay'), function (o) { return !o.hidden; }).pop();
     if (!open) return;
@@ -3002,14 +3297,14 @@
   // interface usada por js/menus.js
   window.GB = {
     VERSION: VERSION, Progress: Progress, THEMES: THEMES, Skins: Skins,
-    get stats() { return stats; }, get settings() { return settings; }, get themeIdx() { return themeIdx; },
+    get stats() { return stats; }, get settings() { return settings; }, flags: FLAGS, get themeIdx() { return themeIdx; },
     fmt: fmt, today: today, store: store, saveStats: saveStats, toast: toast, sound: Sound,
     startGame: startGame, startTutorial: startTutorial, hasSave: hasSave, bestFor: bestFor, challengeDef: challengeDef,
     confirmReplace: confirmReplace, openChallengeIntro: openChallengeIntro, showDialog: showDialog, closeDialog: closeDialog,
     show: show, goHome: goHome, openSettings: function () { settingsReturn = null; openOverlay('#ov-settings'); },
     eventNow: eventNow, openEvent: openEvent, saveSettings: saveSettings,
     galera: galera, weeklyData: weeklyData, shareWeekly: shareWeekly, openPasteFriend: openPasteFriend, askNick: askNick, nick: nick,
-    drawSkinPreview: drawSkinPreview, setSkin: setSkin, resetAll: resetAll, records: records, multText: multText,
+    drawSkinPreview: drawSkinPreview, drawGarden: drawGarden, drawArt: drawArt, setSkin: setSkin, resetAll: resetAll, records: records, multText: multText,
     tutorialDone: function () { return !!store.get('gb.tutorialDone', false); }
   };
 

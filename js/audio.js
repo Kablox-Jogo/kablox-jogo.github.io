@@ -4,7 +4,7 @@
 
   var ctx = null, master = null, sfxBus = null, musicBus = null, noiseBuf = null;
   var MAX_VOICES = 24, sfxVol = 1, musicVol = 0.8;
-  var musicTimer = 0, nextNote = 0, step = 0, musicLp = null;
+  var musicTimer = 0, nextNote = 0, step = 0, musicLp = null, calm = false; // v1.26: calm = Zen (som calmo)
   var theme = { root: 57, scale: [0, 2, 4, 7, 9] };
 
   var Sound = {
@@ -49,9 +49,15 @@
       this._voices.push(t + dur);
       return true;
     },
+    /** v1.26 (dono): Zen com som calmo — música só com acordes e arpejo suave (sem batida nem baixo) e efeitos mais baixos. */
+    setCalm: function (on) {
+      on = !!on; if (on === calm) return; calm = on;
+      if (sfxBus) sfxBus.gain.value = sfxVol * (calm ? 0.6 : 1);
+    },
+    get calm() { return calm; },
     setVolume: function (sfx, music) {
       sfxVol = sfx; musicVol = music;
-      if (sfxBus) sfxBus.gain.value = sfxVol;
+      if (sfxBus) sfxBus.gain.value = sfxVol * (calm ? 0.6 : 1);
       this.updateMusic();
     },
 
@@ -343,6 +349,11 @@
     var prog = progression(th.scale), ch = prog[bar % 4], rootN = th.root - 12 + ch[0] + tr;
     var third = ch[1] === 'm' ? 3 : 4, chord = [rootN, rootN + third, rootN + 7, rootN + 12];
     var arp = ARPS[(Math.floor(bar / 4) + cyc) % ARPS.length];
+    if (calm) { // v1.26: Zen — só acordes longos e um arpejo lento e suave
+      if (s16 === 0) chord.slice(0, 3).forEach(function (m) { tone(c, bus, 'sine', midi(m + 12), t, S16 * 16, 0.03, 0.6); });
+      if (s16 % 4 === 0 && !brk) { var mz = chord[arp[(s16 / 4) % arp.length]] + 24; tone(c, bus, 'sine', midi(mz), t, S16 * 4, 0.014, 0.05); }
+      return;
+    }
     if (!brk) {
       if (beat === 0 && (s16 === 0 || s16 === 8 || (s16 === 10 && bar % 2))) kick(c, bus, t, 0.22);
       if (beat === 1 && (s16 === 0 || (s16 === 7 && bar % 2))) kick(c, bus, t, 0.22); // meia batida
@@ -368,7 +379,7 @@
     if (!ctx || ctx.state !== 'running') return;
     while (nextNote < ctx.currentTime + 0.35) {
       musicStep(ctx, musicBus, step, nextNote, theme);
-      if (musicLp) { var ph = Math.floor(step / 16) % 12; musicLp.frequency.setTargetAtTime(ph >= 8 ? 1800 : 5200, nextNote, 0.8); }
+      if (musicLp) { var ph = Math.floor(step / 16) % 12; musicLp.frequency.setTargetAtTime(calm ? 1500 : ph >= 8 ? 1800 : 5200, nextNote, 0.8); }
       nextNote += S16; step++;
     }
   }
