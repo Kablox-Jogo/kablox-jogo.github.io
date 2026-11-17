@@ -1702,9 +1702,12 @@
       var word = res.combo >= 2 || res.boardClear || hypeOn() ? '' : praiseFor(tier, res.boardClear, res.combo, streak);
       if (word) popup(word, [2.6, mid], 'praise t' + (word === T('Imparável!') ? 4 : tier), 0);
       var hyped = false;
-      if (hypeOn() && !res.boardClear && (res.combo < 2 || res.combo >= 7)) { // v1.30: fala animada (combo 7+ vira "Imparável!"/"Lendário!" com o combo embaixo)
-        word = sayHype(MZHype.pick(tier, { combo: res.combo, streak: streak }), [1.15, mid], res.combo >= 7 ? T('Combo ×{n}', { n: Math.floor(+res.combo) || 0 }) + (res.comboBonus > 0 ? '  +' + fmt(Math.floor(+res.comboBonus) || 0) : '') : '');
-        hyped = res.combo >= 7;
+      // v1.31 (dono: "a fala tá muito frequente e as animações também"): a fala grande aparece só nos momentos que
+      // valem: 3+ linhas, 2 linhas no máximo a cada 6 s, e o combo só nos marcos (7, 10, 15, 20…). 1 linha: só os pontos.
+      var cmb = Math.floor(+res.combo) || 0, comboMile = cmb === 7 || cmb === 10 || (cmb > 10 && cmb % 5 === 0);
+      if (hypeOn() && !res.boardClear && (comboMile || (cmb < 2 && (tier >= 3 || (tier === 2 && Date.now() - hypeAt > 6000))))) { // v1.30: fala animada (combo 7+ vira "Imparável!"/"Lendário!" com o combo embaixo)
+        word = sayHype(MZHype.pick(tier, { combo: comboMile ? cmb : 0, streak: streak }), [1.15, mid], comboMile ? T('Combo ×{n}', { n: cmb }) + (res.comboBonus > 0 ? '  +' + fmt(Math.floor(+res.comboBonus) || 0) : '') : '');
+        hyped = comboMile; hypeAt = Date.now();
       }
       if (feverNow && !res.boardClear) { // a Febre é a mensagem grande desta jogada
         if (window.MZHype) sayHype({ key: 'Febre!', voice: 'febre', tier: 4 }, [1.15, mid], T('Pontos ×2')); // v1.30 (dono: menos texto na tela)
@@ -1712,15 +1715,17 @@
         later(function () { Sound.hype(4); }, 80); hyped = true;
       }
       if (res.combo >= 2 && !res.boardClear && !hyped) { // combo em destaque: número grande + pontos extras do combo; combos altos ganham cor e confete
-        var cbCls = 'combo-big' + (res.combo >= 10 ? ' mega' : res.combo >= 5 ? ' hot' : '');
+        var cbCls = 'combo-big' + (res.combo >= 10 ? ' mega' : res.combo >= 5 ? ' hot' : ''), cbShow = true;
         if (hypeOn()) { // v1.30 (dono: menos poluição): combo no mesmo estilo limpo das falas, no alto do tabuleiro
           var ct = res.combo >= 5 ? 3 : 2;
-          popup(MZHype.build(document, T('Combo ×{n}', { n: Math.floor(+res.combo) || 0 }), ct, res.comboBonus > 0 ? '+' + fmt(Math.floor(+res.comboBonus) || 0) : ''), [1.15, mid], 'hype t' + ct + ' combo-hype', 0, false, 60);
+          cbShow = cmb === 3 || cmb === 5 || (tier >= 3 && Date.now() - hypeAt > 2500);
+          if (cbShow) { hypeAt = Date.now(); // v1.31: combo grande só no ×3, ×5 ou numa jogada forte (o contador do combo continua no alto)
+          popup(MZHype.build(document, T('Combo ×{n}', { n: Math.floor(+res.combo) || 0 }), ct, res.comboBonus > 0 ? '+' + fmt(Math.floor(+res.comboBonus) || 0) : ''), [1.15, mid], 'hype t' + ct + ' combo-hype', 0, false, 60); }
         } else
         popup(T('Combo <b>{n}</b>', { n: Math.floor(+res.combo) || 0 }) + (res.comboBonus > 0 ? ' <small>+' + fmt(Math.floor(+res.comboBonus) || 0) + '</small>' : '')  /* v1.21.2: só números entram no HTML */, [2.6, mid], cbCls, 0, true, 60);
-        if (res.combo >= 5 && partsOn() && !res.boardClear && !zen) anims.push(Fx.confetti(natalGame() ? ['#e8243c', '#2fbf5a', '#ffd23f', '#ffffff', '#1f6b3d'] : evGame() ? ['#ff8a1f', '#9b4dff', '#ffb347', '#6a2fd1', '#2a1a3a'] : pal(th), geo, now + charge + 120, Math.min(70, 20 + res.combo * 4), anims));
+        if (cbShow && res.combo >= 5 && partsOn() && !res.boardClear && !zen) anims.push(Fx.confetti(natalGame() ? ['#e8243c', '#2fbf5a', '#ffd23f', '#ffffff', '#1f6b3d'] : evGame() ? ['#ff8a1f', '#9b4dff', '#ffb347', '#6a2fd1', '#2a1a3a'] : pal(th), geo, now + charge + 120, Math.min(70, 20 + res.combo * 4), anims));
         var rec4 = (state.recent || []).slice(-4), streak4 = rec4.length === 4 && rec4.every(function (v) { return v > 0; });
-        if (lvl === 'full' && settings.quality !== 'low' && !zen && (res.combo >= 5 || streak4)) // efeito temporário: faixas de cor atravessando os blocos
+        if (cbShow && lvl === 'full' && settings.quality !== 'low' && !zen && (res.combo >= 5 || streak4)) // efeito temporário: faixas de cor atravessando os blocos
           anims.push({ type: 'prism', cellsFn: function () { var o = []; if (!state) return o; for (var i = 0; i < state.board.length; i++) if (state.board[i] >= 0) o.push({ r: Math.floor(i / SIZE), c: i % SIZE }); return o; },
             start: now + charge + 200, dur: 1400, strong: res.combo >= 7 });
       }
@@ -1878,12 +1883,22 @@
   function mascotOn() { return !!FLAGS.mascote && settings.kbq !== false && !!window.MZMascot && !!state && state.mode !== 'zen' && state.mode !== 'tutorial'; }
   function mascot(m, ms) { if (mascotOn()) MZMascot.react(m, ms); }
   function hypeOn() { return !!FLAGS.hype && !!window.MZHype; }
+  var hypeAt = 0, voiceAt = 0; // v1.31: última fala grande na tela / última voz (para não ficar chato)
+  /** v1.31: a voz só fala em jogada forte (3+ linhas) e no máximo a cada 8 s; momentos especiais (recorde, limpeza
+   *  perfeita, Imparável, Lendário, Febre) falam sempre. */
+  function voiceOk(pk, special) {
+    if (pk.tier < 3) return false;
+    var now = Date.now(); if (!special && now - voiceAt < 8000) return false;
+    voiceAt = now; return true;
+  }
   function sayHype(pk, origin, sub, delayMs, quiet) { // quiet: a jogada já tem som próprio (limpeza perfeita, recorde) — só a voz gravada, se houver
     popup(MZHype.build(document, T(pk.key), pk.tier, sub), origin, 'hype t' + pk.tier, 0, false, delayMs || 0);
+    var special = !!quiet || pk.voice === 'febre' || pk.voice === 'imparavel' || pk.voice === 'lendario';
     later(function () {
-      var f = settings.tts !== false ? MZHype.Voice.fileFor(MZI18n.lang, pk.voice) : null; // v1.31: a chave "Voz do apresentador" vale também para a voz gravada
+      var talk = voiceOk(pk, special);
+      var f = talk && settings.tts !== false ? MZHype.Voice.fileFor(MZI18n.lang, pk.voice) : null; // v1.31: a chave "Voz do apresentador" vale também para a voz gravada
       if (f && Sound.voice(f)) return;
-      var spoke = pk.tier >= 3 && ttsOn() && MZHype.Speak.say(T(pk.key), MZI18n.lang, pk.tier, settings.sfxVol / 100); // v1.30: voz do próprio celular
+      var spoke = talk && ttsOn() && MZHype.Speak.say(T(pk.key), MZI18n.lang, pk.tier, settings.sfxVol / 100); // v1.30: voz do próprio celular
       if (pk.tier >= 2 && !quiet) Sound.hype(spoke ? Math.min(3, pk.tier) : pk.tier); // com voz, sem o "uau" sintetizado por cima
     }, (delayMs || 0) + 60);
     return T(pk.key);
