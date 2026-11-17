@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Kablox</title>
   <meta name="description" content="A relaxing block puzzle with no timer that works offline. / Quebra-cabeça de blocos relaxante, sem cronômetro, que funciona offline.">
-  <meta name="theme-color" content="#0a0d24">
+  <meta name="theme-color" content="#101726">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,7 +17,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="preload" href="fonts/russo-one.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/bangers.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/sora.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="anim-full">
@@ -87,6 +88,34 @@
     <circle cx="26" cy="104" r="3.5"/>
   </g>
 </symbol>
+    <symbol id="logo-d" viewBox="0 0 200 200">
+  <!-- v1.27 "Premium Quadrinhos": estrela de explosão dourada + bloco azul 3D + pedaços coloridos (arte original) -->
+  <defs>
+    <linearGradient id="dB" x1="0" y1="0" x2=".5" y2="1"><stop offset="0" stop-color="#7FB2FF"/><stop offset=".55" stop-color="#3B82F6"/><stop offset="1" stop-color="#1E55C2"/></linearGradient>
+    <linearGradient id="dR" x1="0" y1="0" x2=".5" y2="1"><stop offset="0" stop-color="#FF8FA3"/><stop offset=".55" stop-color="#EF4565"/><stop offset="1" stop-color="#B5213F"/></linearGradient>
+    <linearGradient id="dG" x1="0" y1="0" x2=".5" y2="1"><stop offset="0" stop-color="#7FF0C0"/><stop offset=".55" stop-color="#2CC98A"/><stop offset="1" stop-color="#17936A"/></linearGradient>
+    <linearGradient id="dP" x1="0" y1="0" x2=".5" y2="1"><stop offset="0" stop-color="#C7A8FF"/><stop offset=".55" stop-color="#9B6BFF"/><stop offset="1" stop-color="#6B3FD1"/></linearGradient>
+    <linearGradient id="dO" x1="0" y1="0" x2=".5" y2="1"><stop offset="0" stop-color="#FFB98A"/><stop offset=".55" stop-color="#FF8A3D"/><stop offset="1" stop-color="#C95A14"/></linearGradient>
+  </defs>
+  <polygon points="100,14 115,52 152,30 141,72 186,74 151,99 184,128 140,128 150,170 114,147 100,186 86,147 50,170 60,128 16,128 49,99 14,74 59,72 48,30 85,52" fill="#F5B93A" stroke="#05080F" stroke-width="5" stroke-linejoin="round"/>
+  <polygon points="100,34 111,62 140,46 131,79 166,82 139,100 163,121 130,121 137,153 110,136 100,166 90,136 63,153 70,121 37,121 61,100 34,82 69,79 60,46 89,62" fill="#FFD06A"/>
+  <g transform="rotate(-8 100 100)">
+    <rect x="72" y="72" width="64" height="64" rx="13" fill="#05080F"/>
+    <rect x="64" y="64" width="64" height="64" rx="13" fill="url(#dB)" stroke="#05080F" stroke-width="5"/>
+    <rect x="74" y="71" width="34" height="8" rx="4" fill="#fff" opacity=".55"/>
+    <path d="M70 122h52" stroke="#000" stroke-opacity=".25" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <g stroke="#05080F" stroke-width="4" stroke-linejoin="round">
+    <rect x="10" y="26" width="28" height="28" rx="7" fill="url(#dR)" transform="rotate(18 24 40)"/>
+    <rect x="162" y="34" width="24" height="24" rx="6" fill="url(#dG)" transform="rotate(-20 174 46)"/>
+    <rect x="150" y="156" width="30" height="30" rx="7" fill="url(#dP)" transform="rotate(14 165 171)"/>
+    <rect x="18" y="160" width="22" height="22" rx="6" fill="url(#dO)" transform="rotate(-12 29 171)"/>
+  </g>
+</symbol>
+    <symbol id="i-hammer" viewBox="0 0 24 24"><path d="M13.2 4.2l5.6 5.6-2.6 2.6-1.6-1.6-7.9 7.9a1.9 1.9 0 0 1-2.7-2.7l7.9-7.9-1.3-1.3z" fill="currentColor"/><path d="M12.6 3.6l1.8-1.8 5.8 5.8-1.8 1.8" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linejoin="round"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.6-5.7" stroke="currentColor" stroke-width="2.8" fill="none" stroke-linecap="round"/><path d="M20.5 3.5v5h-5" stroke="currentColor" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M12 2.5a6.8 6.8 0 0 0-4 12.3c.7.5 1 1.2 1 2v.7h6v-.7c0-.8.3-1.5 1-2A6.8 6.8 0 0 0 12 2.5z" fill="currentColor"/><path d="M9.3 19.6h5.4M10.2 22h3.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M3.5 7h3.8c4.5 0 5.4 10 9.9 10h3.3M3.5 17h3.8c1.6 0 2.7-1.3 3.6-3M13.8 10c.9-1.7 2-3 3.4-3h3.3" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M18 4l2.8 3-2.8 3M18 14l2.8 3-2.8 3" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   </svg>
 
@@ -98,8 +127,8 @@
         <button class="round-btn" id="btn-home-settings" aria-label="Configurações" data-i18n-aria><svg width="26" height="26" aria-hidden="true"><use href="#i-gear"/></svg></button>
       </div>
       <div class="home-inner">
-        <svg class="emblem" viewBox="0 0 200 200" aria-hidden="true"><use href="#logo-emblem"/></svg>
-        <h1 id="title" class="wordmark" aria-label="Kablox"><span aria-hidden="true">KABLO<b class="x">X</b></span></h1>
+        <svg class="emblem" viewBox="0 0 200 200" aria-hidden="true"><use href="#logo-d"/></svg>
+        <h1 id="title" class="wordmark" aria-label="Kablox"><span aria-hidden="true">KABLO<b class="x">X</b><b class="bang">!</b></span></h1>
         <p class="tagline" data-i18n>Encaixe. Exploda. Repita.</p>
         <button class="home-best" data-go="records"><svg width="20" height="20" aria-hidden="true"><use href="#i-crown"/></svg> <span data-i18n>Recorde</span> <strong id="home-best">0</strong><span id="home-medal" class="home-medal" hidden></span><svg class="chev" width="14" height="14" aria-hidden="true"><use href="#i-back"/></svg><span class="sr-only" data-i18n>Recordes</span></button>
         <div class="home-meta" id="home-meta">
@@ -111,6 +140,8 @@
         <div class="mode-cards"><!-- v1.26 (dono): três modos — Clássico (botão grande), Zen e Eventos -->
           <button class="mode-card-btn zen" id="btn-zen"><span class="mc-ico" aria-hidden="true">🌿</span><span class="mc-txt"><strong data-i18n>Zen</strong><small id="zen-sub" data-i18n>No seu ritmo</small></span></button>
           <button class="mode-card-btn events" id="btn-events" data-go="events"><span class="mc-ico" id="events-ico" aria-hidden="true">🎉</span><span class="mc-txt"><strong data-i18n>Eventos</strong><small id="events-sub"></small></span><em class="tile-badge" id="badge-events" hidden data-i18n>NOVO</em></button>
+          <button class="mode-card-btn ranked" id="btn-ranked" hidden><span class="mc-ico" aria-hidden="true">⚔️</span><span class="mc-txt"><strong data-i18n>Ranqueada</strong><small id="ranked-sub" data-i18n>Duelo</small></span><em class="tile-badge lab-badge" data-i18n>LAB</em></button>
+          <button class="mode-card-btn friends" id="btn-friends" hidden><span class="mc-ico" aria-hidden="true">🤝</span><span class="mc-txt"><strong data-i18n>Amigos</strong><small data-i18n>Jogar juntos</small></span><em class="tile-badge lab-badge" data-i18n>LAB</em></button>
         </div>
         <nav class="home-grid" aria-label="Menu principal" data-i18n-aria>
           <button class="bk bk-blue tile" data-go="modes"><svg aria-hidden="true"><use href="#i-grid"/></svg><span data-i18n>Modos</span></button>
@@ -149,6 +180,13 @@
     <section id="screen-help" class="screen menu" aria-labelledby="t-help">
       <header class="menu-head"><button class="icon-btn" data-back aria-label="Voltar" data-i18n-aria><svg width="24" height="24"><use href="#i-back"/></svg></button><h2 id="t-help" data-i18n>Ajuda e tutorial</h2></header>
       <div class="menu-body scrollable" id="body-help"></div>
+    </section>
+
+    <!-- v1.27 (laboratório): Ranqueada — duelo no mesmo tabuleiro (montada por js/duel.js) -->
+    <section id="screen-duel" class="screen menu duel" aria-labelledby="t-duel">
+      <header class="menu-head"><button class="icon-btn" id="duel-back" aria-label="Voltar" data-i18n-aria><svg width="24" height="24" aria-hidden="true"><use href="#i-back"/></svg></button><h2 id="t-duel" data-i18n>Ranqueada</h2></header>
+      <div class="menu-body scrollable duel-root" id="duel-root"></div>
+      <canvas id="duel-drag" class="duel-drag" hidden aria-hidden="true"></canvas>
     </section>
 
     <!-- PARTIDA -->
@@ -192,10 +230,10 @@
         </div>
       </main>
       <div class="helpers" id="helpers" role="toolbar" aria-label="Ajudas" data-i18n-aria hidden>
-        <button class="helper" data-h="hammer" aria-label="Martelo: quebra 1 bloco" data-i18n-aria><span aria-hidden="true">🔨</span><b>0</b></button>
-        <button class="helper" data-h="rotate" aria-label="Girar: gira 1 peça" data-i18n-aria><span aria-hidden="true">🔄</span><b>0</b></button>
-        <button class="helper" data-h="hint" aria-label="Dica: mostra uma boa jogada" data-i18n-aria><span aria-hidden="true">💡</span><b>0</b></button>
-        <button class="helper zen-only" data-z="swap" aria-label="Trocar peças (à vontade no Zen)" data-i18n-aria hidden><span aria-hidden="true">🔀</span><b>∞</b></button>
+        <button class="helper" data-h="hammer" aria-label="Martelo: quebra 1 bloco" data-i18n-aria><span class="h-ico" aria-hidden="true"><svg width="24" height="24"><use href="#i-hammer"/></svg></span><b>0</b></button>
+        <button class="helper" data-h="rotate" aria-label="Girar: gira 1 peça" data-i18n-aria><span class="h-ico" aria-hidden="true"><svg width="24" height="24"><use href="#i-rotate"/></svg></span><b>0</b></button>
+        <button class="helper" data-h="hint" aria-label="Dica: mostra uma boa jogada" data-i18n-aria><span class="h-ico" aria-hidden="true"><svg width="24" height="24"><use href="#i-bulb"/></svg></span><b>0</b></button>
+        <button class="helper zen-only" data-z="swap" aria-label="Trocar peças (à vontade no Zen)" data-i18n-aria hidden><span class="h-ico" aria-hidden="true"><svg width="24" height="24"><use href="#i-shuffle"/></svg></span><b>∞</b></button>
       </div>
       <div class="tray" id="tray" aria-label="Peças disponíveis" data-i18n-aria>
         <div class="slot" data-i="0" tabindex="0" role="button"><canvas></canvas></div>
@@ -233,6 +271,7 @@
       <h3 class="set-sec" data-i18n>🔊 Som</h3>
       <label class="row"><span data-i18n>Efeitos sonoros</span><input type="checkbox" class="switch" id="set-sound" autocomplete="off"></label>
       <label class="vol" for="set-sfx-vol"><span data-i18n>Volume dos efeitos</span><input type="range" id="set-sfx-vol" min="0" max="100" step="5" autocomplete="off"><output id="out-sfx-vol"></output></label>
+      <label class="row" id="row-tts" hidden><span><span data-i18n>Voz do apresentador</span><small data-i18n>O locutor grita "Incrível!", "Épico!"</small></span><input type="checkbox" class="switch" id="set-tts" autocomplete="off"></label>
       <label class="row"><span data-i18n>Música</span><input type="checkbox" class="switch" id="set-music" autocomplete="off"></label>
       <label class="vol" for="set-music-vol"><span data-i18n>Volume da música</span><input type="range" id="set-music-vol" min="0" max="100" step="5" autocomplete="off"><output id="out-music-vol"></output></label>
       <h3 class="set-sec" id="sec-vibrate" data-i18n>📳 Vibração</h3>
@@ -292,6 +331,7 @@
           <label><input type="radio" name="dragSpeed" value="1.6" id="set-drag-16" autocomplete="off"><span data-i18n>Muito rápida</span></label>
         </div>
       </div>
+      <label class="row" id="row-kbq" hidden><span><span data-i18n>Kabloquinho</span><small data-i18n>O bloquinho que reage às jogadas</small></span><input type="checkbox" class="switch" id="set-kbq" autocomplete="off"></label>
       <label class="row"><span><span data-i18n>Símbolos nos blocos</span><small data-i18n>Formas além da cor</small></span><input type="checkbox" class="switch" id="set-symbols" autocomplete="off"></label>
       <h3 class="set-sec" data-i18n>💾 Progresso</h3>
       <div class="row col backup-row">
@@ -312,7 +352,7 @@
         </div>
       </div>
       <button class="btn primary" data-action="close-settings" data-i18n>Fechar</button>
-      <p class="version">Kablox <span id="version"></span> · <span data-i18n>seus dados ficam só neste aparelho</span></p>
+      <p class="version">Kablox <span id="version"></span> · <span data-i18n>seus dados ficam só neste aparelho</span><br><span data-i18n>Voz do locutor: ElevenLabs (elevenlabs.io)</span></p>
     </div>
   </div>
 
@@ -328,6 +368,7 @@
   </div>
 
   <script src="js/i18n.js"></script>
+  <script src="js/flags.js"></script>
   <script src="js/pieces.js"></script>
   <script src="js/logic.js"></script>
   <script src="js/themes.js"></script>
@@ -335,12 +376,13 @@
   <script src="js/fx.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/progress.js"></script>
-  <script src="js/flags.js"></script>
   <script src="js/legend.js"></script>
   <script src="js/season.js"></script>
   <script src="js/weekly.js"></script>
   <script src="js/events.js"></script>
-  <script src="js/halloween-art.js"></script>
+  <script src="js/natal.js"></script>
+  <script src="js/hype.js"></script>
+  <script src="js/mascot.js"></script>
   <script src="js/normal-art.js"></script>
   <script src="js/backup.js"></script>
   <script src="js/news.js"></script>
@@ -348,5 +390,7 @@
   <script src="js/surprise.js"></script>
   <script src="js/app.js"></script>
   <script src="js/menus.js"></script>
+  <script src="js/net.js"></script>
+  <script src="js/duel.js"></script>
 </body>
 </html>

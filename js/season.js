@@ -19,7 +19,8 @@
     { id: 'r1', min: 10000, name: 'Vidro doce' },
     { id: 'r2', min: 25000, name: 'Brasa' },
     { id: 'r3', min: 50000, name: 'Pérola' },
-    { id: 'pk', min: Infinity, name: 'Morcego', event: true } // prêmio do Desafio da Semana do Terror (Halloween 2026)
+    { id: 'pk', min: Infinity, name: 'Morcego', event: true }, // prêmio do Desafio da Semana do Terror (Halloween 2026)
+    { id: 'gf', min: Infinity, name: 'Presente', event: true } // v1.28: prêmio do Desafio de Natal 2026
   ];
   /* v1.26 (dono): BLOCOS LENDÁRIOS (arte em js/legend.js) — liberados para sempre ao passar a marca no Clássico.
      Aparecem às vezes num quadradinho (mais raro: na peça inteira) e às vezes com poder:
@@ -61,7 +62,7 @@
     if (s.chestDay === day) return null;
     s.chestDay = day;
     var roll = rnd(), xp = roll < 0.6 ? 60 : roll < 0.9 ? 100 : 200;
-    return { xp: xp, big: xp >= 200 };
+    return { xp: xp, big: xp >= 200, rar: xp >= 200 ? 'epic' : xp >= 100 ? 'rare' : 'common' }; // v1.30: raridade (comum 60%, raro 30%, épico 10%)
   }
   function medalFor(score) {
     for (var i = 0; i < MEDALS.length; i++) if ((score || 0) >= MEDALS[i].min) return MEDALS[i];

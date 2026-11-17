@@ -1,12 +1,14 @@
 /* Kablox — service worker (funciona offline após o primeiro carregamento)
  * Para publicar uma atualização: altere VERSION abaixo (ex.: 'gb-1.1.1') e publique de novo.
  */
-const VERSION = 'gb-1.26.0';
+const VERSION = 'gb-1.31.0';
 const ASSETS = [
   './',
   './index.html',
   './css/style.css',
   './fonts/russo-one.woff2',
+  './fonts/bangers.woff2',
+  './fonts/sora.woff2',
   './fonts/rubik-600.woff2',
   './fonts/rubik-800.woff2',
   './js/i18n.js', './js/pieces.js',
@@ -19,6 +21,10 @@ const ASSETS = [
   './js/season.js',
   './js/weekly.js',
   './js/events.js',
+  './js/natal.js',
+  './js/hype.js',
+  './js/mascot.js',
+  './assets/voz/vozes.json',
   './js/halloween-art.js',
   './js/normal-art.js',
   './js/legend.js',
@@ -28,6 +34,8 @@ const ASSETS = [
   './js/ui.js',
   './js/surprise.js',
   './js/menus.js',
+  './js/net.js',
+  './js/duel.js',
   './js/app.js',
   './manifest.webmanifest',
   './baixar.html', './opiniao.html', './css/site.css', './js/site.js',

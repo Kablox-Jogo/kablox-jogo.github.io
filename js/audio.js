@@ -6,6 +6,7 @@
   var MAX_VOICES = 24, sfxVol = 1, musicVol = 0.8;
   var musicTimer = 0, nextNote = 0, step = 0, musicLp = null, calm = false; // v1.26: calm = Zen (som calmo)
   var theme = { root: 57, scale: [0, 2, 4, 7, 9] };
+  var heat = 0; // v1.30 (laboratório): 0 normal · 1 combo ×3+ · 2 combo ×7+ — a trilha ganha camadas extras e não entra na pausa
 
   var Sound = {
     sfxOn: true,
@@ -254,6 +255,74 @@
       this._tone(627, { to: 386, dur: 0.9, vol: 0.035, type: 'sine', attack: 0.2, delay: 0.02 });
     },
     /** v1.24 (Semana do Terror): uivo curto no fim da partida. */
+    jingle: function () { // v1.28: guizos de trenó (Natal)
+      for (var i = 0; i < 6; i++) { var f = 2200 + (i % 3) * 420; this._tone(f, { dur: 0.09, vol: 0.035, type: 'triangle', delay: i * 0.055 }); this._tone(f * 1.5, { dur: 0.06, vol: 0.015, type: 'sine', delay: i * 0.055 + 0.01 }); }
+    },
+    jingleSong: function () { // v1.28: começo de "Jingle Bells" (1857, domínio público) no fim da partida de Natal
+      var r = 64; [[0, 0], [0, 0.18], [0, 0.36], [0, 0.66], [0, 0.84], [0, 1.02], [0, 1.32], [3, 1.5], [-4, 1.68], [-2, 1.92], [0, 2.1]].forEach(function (n) { Sound._tone(midi(r + n[0]), { dur: 0.2, vol: 0.06, type: 'triangle', delay: n[1] }); });
+    },
+    bell: function () { // v1.29: sininho curto na quebra de linha (Natal), baixinho
+      this._tone(1568, { dur: 0.5, vol: 0.035, type: 'sine' }); this._tone(2350, { dur: 0.35, vol: 0.018, type: 'sine', delay: 0.005 }); this._tone(3136, { dur: 0.2, vol: 0.01, type: 'sine', delay: 0.01 });
+    },
+    /* v1.30 (laboratório): "apresentador" sintetizado para as falas animadas — sobe a empolgação conforme a jogada.
+       t1/t2: brilho curto · t3: fanfarra + swoosh · t4: fanfarra cheia + brilho e "uau" (vogal sintetizada). Baixinho, para não poluir. */
+    hype: function (tier) {
+      if (!ctx || !this.sfxOn || sfxVol <= 0) return;
+      var r = 72, self = this;
+      if (tier <= 1) { [0, 7].forEach(function (n, i) { self._tone(midi(r + n), { dur: 0.12, vol: 0.035, type: 'triangle', delay: i * 0.06 }); }); return; }
+      if (tier === 2) { [0, 4, 7].forEach(function (n, i) { self._tone(midi(r + n), { dur: 0.14, vol: 0.04, type: 'triangle', delay: i * 0.055 }); }); return; }
+      this._noise({ dur: 0.35, vol: 0.05, filter: 'bandpass', freq: 900, toFreq: 5200, q: 0.9 }); // swoosh
+      var notes = tier >= 4 ? [0, 4, 7, 12, 16] : [0, 4, 7, 12];
+      notes.forEach(function (n, i) { self._tone(midi(r - 12 + n), { dur: 0.22, vol: 0.045, type: 'sawtooth', delay: 0.05 + i * 0.06 }); self._tone(midi(r + n), { dur: 0.2, vol: 0.03, type: 'triangle', delay: 0.05 + i * 0.06 }); });
+      if (tier >= 4) { this._vowel(0.38); [24, 28, 31].forEach(function (n, i) { self._tone(midi(r + n), { dur: 0.3, vol: 0.018, type: 'sine', delay: 0.42 + i * 0.05 }); }); }
+    },
+    /** "Uau!" sintetizado (duas formantes que deslizam de U para A): dá um tom de voz animada sem gravação. */
+    _vowel: function (delay) {
+      if (!ctx || !this.sfxOn || sfxVol <= 0) return;
+      var t = ctx.currentTime + (delay || 0), dur = 0.42; if (!this._slot(t, dur)) return;
+      var src = ctx.createOscillator(); src.type = 'sawtooth'; src.frequency.setValueAtTime(220, t); src.frequency.linearRampToValueAtTime(300, t + 0.15); src.frequency.linearRampToValueAtTime(240, t + dur);
+      var out = ctx.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.05 * (this._gk || 1), t + 0.05); out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      [[300, 700, 6], [800, 1200, 8]].forEach(function (f) { var bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = f[2]; bp.frequency.setValueAtTime(f[0], t); bp.frequency.linearRampToValueAtTime(f[1], t + 0.2); src.connect(bp); bp.connect(out); });
+      out.connect(sfxBus); src.start(t); src.stop(t + dur + 0.05);
+    },
+    /** v1.30: toca um arquivo de voz gravado (assets/voz/…). Volta false se não der (aí o jogo usa o som sintetizado). */
+    _voiceBufs: {},
+    voice: function (file) {
+      if (!ctx || !this.sfxOn || sfxVol <= 0 || !/^[a-z]{2}_[a-z_]+_[fm]\.(mp3|m4a|ogg|wav)$/.test(file || '')) return false;
+      var self = this, buf = this._voiceBufs[file];
+      var play = function (b) { var s = ctx.createBufferSource(), g = ctx.createGain(); g.gain.value = 0.9; s.buffer = b; s.connect(g); g.connect(sfxBus); s.start(); };
+      if (buf && buf !== 'loading' && buf !== 'bad') { play(buf); return true; }
+      if (!buf) { this._voiceBufs[file] = 'loading'; try { root.fetch('assets/voz/' + file).then(function (r) { return r.arrayBuffer(); }).then(function (a) { return ctx.decodeAudioData(a); })
+        .then(function (b) { self._voiceBufs[file] = b; }).catch(function () { self._voiceBufs[file] = 'bad'; }); } catch (e) { this._voiceBufs[file] = 'bad'; } }
+      return false; // primeira vez só carrega; a próxima já toca
+    },
+    /** v1.31: carrega as vozes antes (ao entrar na partida), para a primeira fala já sair gravada. */
+    voicePreload: function (files) {
+      if (!ctx || !files || !files.length) return;
+      var self = this;
+      files.forEach(function (f) {
+        if (self._voiceBufs[f] || !/^[a-z]{2}_[a-z_]+_[fm]\.(mp3|m4a|ogg|wav)$/.test(f)) return;
+        self._voiceBufs[f] = 'loading';
+        try { root.fetch('assets/voz/' + f).then(function (r) { return r.arrayBuffer(); }).then(function (a) { return ctx.decodeAudioData(a); })
+          .then(function (b) { self._voiceBufs[f] = b; }).catch(function () { self._voiceBufs[f] = 'bad'; }); } catch (e) { self._voiceBufs[f] = 'bad'; }
+      });
+    },
+    /* v1.30 (laboratório, chave do acabamento): sons da interface e do baú — curtos e baixinhos */
+    boop: function () { this._tone(520, { to: 880, dur: 0.09, vol: 0.05, type: 'sine' }); this._tone(1040, { to: 1320, dur: 0.06, vol: 0.025, type: 'triangle', delay: 0.07 }); }, // v1.30: tocar no Kabloquinho
+    uiOpen: function () { this._tone(660, { to: 990, dur: 0.07, vol: 0.03, type: 'sine' }); this._noise({ filter: 'bandpass', freq: 1800, toFreq: 3600, q: 1.2, dur: 0.06, vol: 0.015 }); },
+    uiBack: function () { this._tone(880, { to: 560, dur: 0.07, vol: 0.028, type: 'sine' }); },
+    chestKnock: function () { this._tone(210, { to: 150, dur: 0.07, vol: 0.09, type: 'sine' }); this._noise({ filter: 'bandpass', freq: 900, q: 2, dur: 0.03, vol: 0.06 }); },
+    chestOpen: function (rar) { // comum: brilho · raro: brilho + acorde · épico: fanfarra + "uau"
+      var r = 76, self = this;
+      this._noise({ filter: 'highpass', freq: 3000, toFreq: 7000, dur: 0.3, vol: 0.035 });
+      var notes = rar === 'epic' ? [0, 4, 7, 12, 16, 19] : rar === 'rare' ? [0, 4, 7, 12] : [0, 7];
+      notes.forEach(function (n, i) { self._tone(midi(r + n), { dur: 0.3, vol: 0.045, type: 'triangle', delay: 0.05 + i * 0.07 }); });
+      if (rar === 'epic') { this._vowel(0.5); this._tone(midi(r - 12), { dur: 0.8, vol: 0.05, type: 'sawtooth', delay: 0.05 }); }
+    },
+    poof: function () { // v1.28: presente some na neve
+      this._noise && this._noise({ dur: 0.35, vol: 0.06, freq: 2400, q: 0.8 });
+      this._tone(880, { to: 440, dur: 0.3, vol: 0.04, type: 'sine' });
+    },
     howl: function () {
       this._tone(330, { to: 560, dur: 0.45, vol: 0.05, type: 'sine', attack: 0.12 });
       this._tone(560, { to: 300, dur: 0.8, vol: 0.05, type: 'sine', delay: 0.42 });
@@ -284,6 +353,18 @@
       [12, 7, 4, 0].forEach(function (s, i) { Sound._tone(midi(r + s), { dur: 0.5, vol: 0.08, delay: i * 0.18, type: 'triangle' }); });
     },
 
+    /** v1.30: batimento (tum-tum) baixinho quando o tabuleiro está quase cheio. */
+    heartbeat: function () { this._tone(70, { to: 42, dur: 0.14, vol: 0.05, type: 'sine' }); this._tone(64, { to: 40, dur: 0.16, vol: 0.034, type: 'sine', delay: 0.18 }); },
+    /** v1.30: "tique" da contagem do placar no fim (sobe de tom conforme chega perto do recorde). */
+    tick: function (k) { this._tone(600 + 900 * Math.max(0, Math.min(1, k)), { dur: 0.03, vol: 0.025, type: 'square' }); },
+    /** v1.30: intensidade da trilha conforme o combo (só muda as próximas notas; volta ao normal quando o combo acaba). */
+    setHeat: function (h) { heat = h >= 2 ? 2 : h >= 1 ? 1 : 0; },
+    get heat() { return heat; },
+    /** v1.30: combo grande que acabou — "ôôô" curto descendo, baixinho (dá peso ao combo sem brigar com os outros sons). */
+    comboLost: function (n) {
+      if (!ctx || !this.sfxOn || sfxVol <= 0) return;
+      var self = this, base = 76; [0, -3, -7].forEach(function (d, i) { self._tone(midi(base + d), { to: midi(base + d - 1), dur: 0.16, vol: 0.03, type: 'triangle', delay: i * 0.09 }); });
+    },
     updateMusic: function () {
       if (!ctx) return;
       var on = this.musicOn && musicVol > 0;
@@ -343,7 +424,8 @@
   var ARPS = [[0, 1, 2, 1, 0, 1, 2, 3], [0, 2, 1, 2, 0, 2, 3, 2], [2, 1, 0, 1, 2, 3, 2, 1]];
   /** Agenda uma semicolcheia n (0..) da música no instante t. */
   function musicStep(c, bus, n, t, th) {
-    var bar = Math.floor(n / 16), s16 = n % 16, phrase = bar % 12, brk = phrase >= 8; // 8 compassos cheios + 4 de pausa
+    var hot = c === ctx ? heat : 0; // v1.30: combo esquenta a trilha (só no jogo, não na prévia em arquivo)
+    var bar = Math.floor(n / 16), s16 = n % 16, phrase = bar % 12, brk = phrase >= 8 && !hot; // 8 compassos cheios + 4 de pausa (com combo, sem pausa)
     // v1.24 (dono: "a música cansa"): a cada 24 compassos (~55 s) muda de tom, de batida e de arpejo
     var cyc = Math.floor(bar / 24), tr = [0, 2, -3, 5][cyc % 4], beat = cyc % 3;
     var prog = progression(th.scale), ch = prog[bar % 4], rootN = th.root - 12 + ch[0] + tr;
@@ -370,6 +452,11 @@
       var k = arp[(s16 / 2) % arp.length], m2 = chord[k] + 24;
       if (!brk || s16 % 4 === 0) tone(c, bus, 'square', midi(m2), t, S16 * 1.6, brk ? 0.012 : 0.02, 0.004, 2600);
     }
+    if (hot >= 1 && s16 % 2 === 1) { // v1.30: combo ×3+ — arpejo dobrado uma oitava acima e chimbal aberto no contratempo
+      tone(c, bus, 'square', midi(chord[(s16 >> 1) % 4] + 36), t, S16 * 0.9, 0.009, 0.003, 3800);
+      if (s16 % 4 === 3) noiseHit(c, bus, t, 0.022, 'highpass', 6000, 0.09);
+    }
+    if (hot >= 2 && (s16 === 4 || s16 === 12)) { kick(c, bus, t, 0.16); if (s16 === 12 && bar % 2) noiseHit(c, bus, t, 0.05, 'bandpass', 2400, 0.2); } // combo ×7+: mais batida
     if (!brk && bar % 2 === 1 && (s16 === 3 || s16 === 11) ) { // respostas curtas da melodia
       var deg = th.scale[(bar + s16 + cyc) % th.scale.length];
       tone(c, bus, 'triangle', midi(th.root + 12 + deg + tr), t, S16 * 3, 0.03, 0.01);

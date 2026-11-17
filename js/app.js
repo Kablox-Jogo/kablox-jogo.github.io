@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.26.0';
+  var VERSION = '1.31.0';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise, Season = window.MZSeason, Weekly = window.MZWeekly, Events = window.MZEvents;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   /* v1.24 (reclamação dos jogadores: "tabuleiro quase transparente, machuca a vista"): contraste mínimo garantido em
@@ -66,11 +66,13 @@
   settings.nick = typeof settings.nick === 'string' ? settings.nick.replace(/[\u0000-\u001f<>&"'`\\]/g, '').slice(0, 16) : ''; // v1.24: apelido do placar da galera
   if (!settings.mv40) { if (Number(settings.musicVol) === 60) settings.musicVol = 40; settings.mv40 = true; } // v1.23: música padrão mais baixa (quem nunca mexeu passa de 60% para 40%)
   settings.particles = settings.particles !== false;
+  settings.kbq = settings.kbq !== false; // v1.30: dá para esconder o Kabloquinho (menos coisa na tela)
+  settings.tts = settings.tts !== false; // v1.30: voz do apresentador (voz do celular), só com a chave das falas
   // v1.20: efeitos especiais em 3 níveis (antes: liga/desliga "Mudanças surpresa" — desligado vira 'off')
   if (['full', 'reduced', 'off'].indexOf(settings.fx) === -1) settings.fx = settings.surprise === false ? 'off' : 'full';
   settings.surprise = settings.fx !== 'off';
   if ([1, 1.3, 1.6].indexOf(Number(settings.dragSpeed)) === -1) settings.dragSpeed = 1.3; else settings.dragSpeed = Number(settings.dragSpeed);
-  I18n.setLang(settings.lang || I18n.detect());
+  I18n.setLang(settings.lang || (window.MZ_LAB === true ? 'pt' : I18n.detect())); // v1.30: laboratório (prévia do dono, dentro da página do Claude) abre em português
   ['sfxVol', 'musicVol'].forEach(function (k) { var v = Number(settings[k]); settings[k] = isFinite(v) ? Math.max(0, Math.min(100, v)) : (k === 'sfxVol' ? 80 : 40); });
 
   /* ---------------- estado ---------------- */
@@ -176,30 +178,50 @@
     ctx.restore();
   }
   /* v1.25: blocos de Halloween (js/halloween-art.js) — só durante o evento e depois que a imagem carregou */
-  var hwImg = null, hwReady = false;
+  // v1.29: o mesmo vale para os blocos de Natal (js/natal-art.js, gerado por tools/cut_blocks.py quando chegarem as imagens do dono)
+  function evArt() { return terrorGame() ? window.MZHalloweenArt || null : natalGame() ? window.MZNatalArt || null : null; }
+  function evArtKey() { return terrorGame() ? 'hw' : 'xm'; }
+  var artImgs = {};
+  function natalAlbum() { var ne = Events.byId('natal2026'); if (window.MZNatalArt && ne && !ne.album.length) ne.album = Events.NATAL_ALBUM; } // v1.29: blocos de Natal chegaram → álbum de Natal
+  natalAlbum();
+  /* v1.30 (fluidez): a arte do Halloween (256 KB) não trava mais a abertura do jogo — carrega depois, sozinha, ou na hora se houver evento.
+     Na versão de arquivo único (laboratório) ela já vem junto. loadArt(cb) chama cb quando estiver pronta. */
+  var artQ = null;
+  function loadArt(cb) {
+    if (window.MZHalloweenArt) { if (cb) cb(); return; }
+    if (!artQ) {
+      artQ = []; var sc = document.createElement('script'); sc.src = 'js/halloween-art.js'; sc.async = true;
+      sc.onload = function () { natalAlbum(); artImgs = {}; sprites = {}; rareCache = {}; if (state) drawTray(false); requestRender(); var q = artQ; artQ = []; q.forEach(function (f) { try { f(); } catch (e) {} }); };
+      sc.onerror = function () { artQ = null; };
+      document.head.appendChild(sc);
+    }
+    if (cb) artQ.push(cb);
+  }
   function hwTile(skin, theme) {
-    var art = window.MZHalloweenArt; if (!art || !evGame()) return null; // v1.25 (dono): Halloween só no modo Evento — Clássico e Zen ficam normais
-    if (!hwImg) { hwImg = new Image(); hwImg.onload = function () { hwReady = true; sprites = {}; rareCache = {}; if (typeof drawTray === 'function' && state) drawTray(false); requestRender(); }; hwImg.src = art.src; }
-    if (!hwReady) return null;
+    var art = evArt(); if (!art) return null; // v1.25 (dono): blocos do evento só no modo Evento — Clássico e Zen ficam normais
+    var ak = evArtKey(), im = artImgs[ak];
+    if (!im) { im = artImgs[ak] = new Image(); im.onload = function () { im.ready = true; sprites = {}; rareCache = {}; if (typeof drawTray === 'function' && state) drawTray(false); requestRender(); }; im.src = art.src; }
+    if (!im.ready) return null;
     var k = skin;
     if (skin === 'classic' && theme) k = { verdeagua: 'v-verdeagua', brancoazul: 'v-brancoazul', terra: 'v-terra' }[theme.id] || 'classic';
-    var row = art.keys.indexOf(k); return row < 0 ? null : { row: row, key: k };
+    var row = art.keys.indexOf(k); return row < 0 ? null : { row: row, key: k, img: im, cell: art.cell };
   }
   /* v1.25: blocos normais das imagens do dono (js/normal-art.js) — fora do modo Evento */
   var nmImg = null, nmReady = false;
   function nmTile(skin) {
-    var art = window.MZNormalArt; if (!art || evGame()) return null;
+    var art = window.MZNormalArt; if (!art || evArt()) return null;
     if (!nmImg) { nmImg = new Image(); nmImg.onload = function () { nmReady = true; sprites = {}; if (state) drawTray(false); requestRender(); if (window.GBMenus && window.GBMenus.refresh && screenIs('collection')) window.GBMenus.refresh('collection'); if (screenIs('home') || overlayOpen()) buildSkinPicker && $('#skins') && buildSkinPicker(); }; nmImg.src = art.src; }
     if (!nmReady) return null;
     var row = art.keys.indexOf(skin); return row < 0 ? null : { row: row, key: skin, img: nmImg, cell: art.cell, normal: true };
   }
   setTimeout(function () { nmTile('ice'); }, 0);
   var FLAGS = window.MZFlags || { helpers: true, legends: true, zenNew: true }; // v1.26: partes esperando aprovação do dono (js/flags.js)
+  if (FLAGS.hype && window.MZHype) MZHype.Voice.init(); // v1.30: procura vozes gravadas (assets/voz/vozes.json); sem elas, nada muda
   setTimeout(function () { if (FLAGS.helpers && !stats.helperWelcome) { stats.helperWelcome = 1; stats.helpers = { hammer: 1, rotate: 1, hint: 1 }; saveStats(); } }, 0); // v1.26: 1 de cada para experimentar // v1.25: começa a carregar os blocos novos já na abertura (a galeria não mostra os antigos)
-  function artTile(skin, theme) { var t = hwTile(skin, theme); if (t) { t.img = hwImg; t.cell = window.MZHalloweenArt.cell; return t; } return nmTile(skin); }
+  function artTile(skin, theme) { return hwTile(skin, theme) || nmTile(skin); }
   function sprite(theme, color, px, skinOpt) {
     var skin = skinOpt || curSkin(), classic = skin !== 'theme'; // casas vazias quadradas fora do modo "Do tema"
-    var key = theme.id + '|' + color + '|' + px + '|' + skin + (settings.symbols ? '|s' : '') + (color >= 0 && artTile(skin, theme) ? (evGame() ? '|hw' : '|nm') : ''), c = sprites[key];
+    var key = theme.id + '|' + color + '|' + px + '|' + skin + (settings.symbols ? '|s' : '') + (color >= 0 && artTile(skin, theme) ? (evArt() ? '|' + evArtKey() : '|nm') : ''), c = sprites[key];
     if (c) return c;
     c = document.createElement('canvas');
     c.width = c.height = px;
@@ -251,6 +273,7 @@
     render();
     drawTray(false);
     requestRender();
+    placeMascot(); // v1.30
   }
 
   var resizeT = 0;
@@ -283,7 +306,7 @@
   function comboFrameOn() { return !!state && state.combo >= 3 && state.combo < 10 && !state.over && settings.anim === 'full' && settings.quality !== 'low' && state.mode !== 'tutorial' && state.mode !== 'zen' && !document.hidden && screenIs('game'); }
   var FACES = { jelly: 1, fur: 1, candy: 1, bubble: 1, cheese: 1 }; // v1.24: estilos com "carinha"
   function facesOn() { return !!state && !!FACES[curSkin()] && !artTile(curSkin(), boardTheme()) && settings.anim === 'full' && settings.quality !== 'low' && !document.hidden && screenIs('game'); }
-  function cagesOn() { if (!state || !state.rare || settings.anim !== 'full' || document.hidden || !screenIs('game')) return false; for (var k in state.rare) if (state.rare[k] === 'pk') return true; return false; }
+  function cagesOn() { if (!state || !state.rare || settings.anim !== 'full' || document.hidden || !screenIs('game')) return false; for (var k in state.rare) if (isEvItem(state.rare[k])) return true; return false; }
   var lastLive = 0;
   // v1.23 (otimização, pedido do dono): se o celular engasga nas animações, passa sozinho para "Efeitos: Leves" (uma vez, com aviso)
   var perf = { last: 0, samples: [], done: false };
@@ -294,7 +317,7 @@
     if (perf.samples.length < 90) return; // ~4 s de animação engasgada
     var a = perf.samples.slice().sort(function (x, y) { return x - y; }), med = a[Math.floor(a.length / 2)];
     perf.samples = [];
-    if (med > 45) { // abaixo de ~22 quadros por segundo de forma constante
+    if (med > (FLAGS.juice ? 34 : 45)) { // abaixo de ~22 quadros por segundo de forma constante (v1.30, chave juice: abaixo de ~30 — celular médio também fica liso)
       perf.done = true; settings.autoLight = true; applyPreset('light');
       toast(T('Efeitos mais leves'), T('O celular estava engasgando, então deixamos os efeitos mais leves. Dá para mudar em Configurações → Visual.'));
     }
@@ -323,7 +346,7 @@
     var b = 1 + 0.035 * Math.sin(now / 420 + seed), rot = 0.035 * Math.sin(now / 610 + seed * 1.7), cx = x + cell / 2, cy = y + cell / 2;
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.scale(b, 2 - b);
     ctx.drawImage(spr, -cell / 2, -cell / 2, cell, cell);
-    var furCols = evGame() ? HW_FUR : NM_FUR, cute = !evGame(); // normal: pelúcia fofinha (olhos pequenos)
+    var furCols = terrorGame() ? HW_FUR : NM_FUR, cute = !terrorGame(); // normal: pelúcia fofinha (olhos pequenos)
     ctx.strokeStyle = furCols[color % 4]; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, cell * 0.035); ctx.globalAlpha = 0.85;
     for (var k = 0; k < 5; k++) { // tufos no alto da cabeça balançando
       var fx = -cell * 0.3 + k * cell * 0.15, sway = Math.sin(now / 260 + seed + k * 1.3) * cell * 0.06;
@@ -372,12 +395,19 @@
       prev.preview.cols.forEach(function (c) { clearCols[c] = 1; });
     }
 
+    var cas = null; for (var ai = 0; ai < anims.length; ai++) if (anims[ai].type === 'cascade') { cas = anims[ai]; break; } // v1.30
     for (var r = 0; r < SIZE; r++) {
       for (var c = 0; c < SIZE; c++) {
+        if (cas) { // v1.30: entrada em onda — cada casa cresce e aparece um pouco depois da vizinha
+          var ct = Math.max(0, Math.min(1, (now - cas.start - (r + c) * 32) / 240));
+          if (ct <= 0) continue;
+          if (ct < 1) { var ce = 1 - Math.pow(1 - ct, 3), csz = cell * (0.35 + 0.65 * ce) * (1 + 0.08 * Math.sin(ct * Math.PI)), cx0 = pad + c * cell + (cell - csz) / 2, cy0 = pad + r * cell + (cell - csz) / 2, cv = state.board[r * SIZE + c];
+            ctx.globalAlpha = ce; ctx.drawImage(sprite(th, cv < 0 ? -1 : cv, px), cx0, cy0, csz, csz); ctx.globalAlpha = 1; continue; }
+        }
         var cth = th;
         if (sw) cth = ((r + c) / (2 * (SIZE - 1))) <= sw.p ? sw.to : sw.from;
         var x = pad + c * cell, y = pad + r * cell, v = state.board[r * SIZE + c];
-        if (v < 0) ctx.drawImage(sprite(cth, -1, px), x, y, cell, cell);
+        if (v < 0 || (state.rare && String(state.rare[r * SIZE + c] || '').charAt(0) === 'L' && window.MZLegend)) ctx.drawImage(sprite(cth, -1, px), x, y, cell, cell); // v1.31: lendário não tem bloco comum por baixo (a borda dele não aparece em volta)
         else {
           var color = (prev && (clearRows[r] || clearCols[c])) ? prev.piece.c : v;
           if (furLive) drawHwFur(ctx, sprite(cth, color, px), x, y, cell, now, r * 7 + c * 3, color);
@@ -393,14 +423,14 @@
     });
 
     if (state.rare) for (var rk in state.rare) { // v1.24: blocos raros no tabuleiro (só visual)
-      var ri = +rk; if (state.board[ri] < 0 || (state.rare[rk] === 'pk' && state.mode !== 'event')) continue; // v1.25: gaiola só no modo Evento
+      var ri = +rk; if (state.board[ri] < 0 || ((isEvItem(state.rare[rk]) || state.rare[rk] === 'sn') && state.mode !== 'event')) continue; // v1.25: gaiola só no modo Evento
       var rx = pad + (ri % SIZE) * cell, ry = pad + Math.floor(ri / SIZE) * cell;
-      ctx.save(); if (settings.anim === 'full' && state.rare[rk] !== 'pk') ctx.globalAlpha = 0.82 + 0.18 * Math.sin(now / 300 + ri);
-      var rsh = state.rare[rk] === 'pk' && settings.anim === 'full' && (now + ri * 377) % 2400 < 300 ? Math.sin(now / 22) * cell * 0.05 : 0; // o morcego sacode a gaiola
+      ctx.save(); if (settings.anim === 'full' && !isEvItem(state.rare[rk]) && state.rare[rk] !== 'sn') ctx.globalAlpha = 0.82 + 0.18 * Math.sin(now / 300 + ri);
+      var rsh = isEvItem(state.rare[rk]) && settings.anim === 'full' && (now + ri * 377) % 2400 < 300 ? Math.sin(now / 22) * cell * 0.05 : 0; // o morcego sacode a gaiola
       if (String(state.rare[rk]).charAt(0) === 'L') { ctx.globalAlpha = 1; drawRare(ctx, state.rare[rk], rx, ry, cell, px, now, ri); }
       else ctx.drawImage(rareSprite(state.rare[rk], px), rx + rsh, ry, cell, cell);
-      if (state.rare[rk] === 'pk' && state.pkAge && state.pkAge[rk] != null) { // v1.25: jogadas até o morcego fugir (aparece nas 3 últimas)
-        var fleeLeft = evFlee() - ((state.evMoves || 0) - state.pkAge[rk]);
+      if (isEvItem(state.rare[rk]) && state.pkAge && state.pkAge[rk] != null) { // v1.25: jogadas até o morcego fugir (aparece nas 3 últimas)
+        var fleeLeft = itemFlee(state.rare[rk]) - ((state.evMoves || 0) - state.pkAge[rk]);
         if (fleeLeft <= 3) {
           var bxr = rx + cell * 0.8, byr = ry + cell * 0.2, brr = cell * 0.19;
           ctx.fillStyle = fleeLeft <= 1 ? '#e8243c' : '#b0306a'; ctx.beginPath(); ctx.arc(bxr, byr, brr, 0, 7); ctx.fill();
@@ -507,7 +537,7 @@
    *  Quando só falta 1 peça para o combo acabar, elas ficam mais fracas (a moldura "apagando"). */
   function drawComboSparks(ctx, now) {
     var S = L.size, k = state.combo, n = k >= 7 ? 8 : k >= 5 ? 6 : 4, per = 4 * (S - 6), speed = k >= 7 ? 0.11 : k >= 5 ? 0.085 : 0.06;
-    var left = Logic.CONFIG.combo.window - state.movesSinceClear, dim = left <= 1 ? 0.45 : 1, col = boardTheme().accent, haunt = evGame();
+    var left = Logic.CONFIG.combo.window - state.movesSinceClear, dim = left <= 1 ? 0.45 : 1, col = boardTheme().accent, haunt = terrorGame();
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = col;
     for (var i = 0; i < n; i++) {
       if (haunt) col = i % 2 ? '#a45bff' : '#ff8a1f'; // v1.25: faíscas roxas e laranja no evento
@@ -533,7 +563,7 @@
         var x = (k + 0.5) / n * S + Math.sin(ph * 2.3) * cell * 0.15, h = cell * (1.3 + 0.6 * Math.sin(now / 170 + k)), y = S - rise * h;
         var r = cell * (0.75 - 0.45 * rise) * (layer ? 0.7 : 1);
         var g = ctx.createRadialGradient(x, y, 0, x, y, r);
-        g.addColorStop(0, layer ? (evGame() ? 'rgba(190,120,255,.8)' : 'rgba(255,235,140,.8)') : 'rgba(255,150,40,.7)'); // v1.25: fogo roxo e laranja no evento g.addColorStop(1, 'rgba(255,90,20,0)');
+        g.addColorStop(0, layer ? (terrorGame() ? 'rgba(190,120,255,.8)' : natalGame() ? 'rgba(255,250,235,.85)' : 'rgba(255,235,140,.8)') : 'rgba(255,150,40,.7)'); // v1.25: fogo roxo e laranja no evento g.addColorStop(1, 'rgba(255,90,20,0)');
         ctx.globalAlpha = 1 - rise * 0.8; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
       }
     }
@@ -588,8 +618,47 @@
   }
   /* v1.24: arte dos blocos raros (original): Vidro doce (listras de bala), Brasa (rachaduras acesas), Pérola (brilho furta-cor) */
   var rareCache = {};
+  /* v1.28 (laboratório): presente de Natal (desenho próprio) — caixa vermelha, fita dourada e laço. lid=0 desenha sem a tampa. */
+  function drawGift(g, px, lid, gold) {
+    g.save(); Themes.roundRect(g, px * 0.06, px * 0.06, px * 0.88, px * 0.88, px * 0.18); g.clip();
+    var bg = g.createRadialGradient(px * 0.5, px * 0.4, px * 0.05, px * 0.5, px * 0.5, px * 0.62);
+    bg.addColorStop(0, '#2c7a4b'); bg.addColorStop(1, '#0f3322'); g.fillStyle = bg; g.fillRect(0, 0, px, px); // fundo verde-pinheiro
+    g.fillStyle = 'rgba(255,255,255,.75)'; [[0.18, 0.2], [0.82, 0.16], [0.14, 0.8], [0.86, 0.78], [0.5, 0.12]].forEach(function (d) { g.beginPath(); g.arc(px * d[0], px * d[1], px * 0.025, 0, 7); g.fill(); }); // neve
+    g.restore();
+    var bx = px * 0.22, by = px * 0.44, bw = px * 0.56, bh = px * 0.42;
+    var bodyG = g.createLinearGradient(0, by, 0, by + bh); bodyG.addColorStop(0, gold ? '#ffe27a' : '#f0383f'); bodyG.addColorStop(1, gold ? '#c98a0c' : '#a8121c'); // v1.29: dourado = vale 3
+    g.fillStyle = bodyG; Themes.roundRect(g, bx, by, bw, bh, px * 0.05); g.fill();
+    g.fillStyle = '#ffd23f'; g.fillRect(px * 0.46, by, px * 0.08, bh); // fita
+    if (lid) {
+      g.fillStyle = gold ? '#f5c234' : '#d82230'; Themes.roundRect(g, px * 0.18, px * 0.34, px * 0.64, px * 0.13, px * 0.04); g.fill(); // tampa
+      g.fillStyle = gold ? '#e8243c' : '#ffd23f'; g.fillRect(px * 0.46, px * 0.34, px * 0.08, px * 0.13);
+      drawBow(g, px * 0.5, px * 0.33, px);
+    }
+    g.strokeStyle = gold ? '#fff2a8' : 'rgba(255,240,200,.9)'; g.lineWidth = Math.max(1.5, px * (gold ? 0.06 : 0.045)); g.shadowColor = '#ffd23f'; g.shadowBlur = px * (gold ? 0.16 : 0.08);
+    Themes.roundRect(g, px * 0.07, px * 0.07, px * 0.86, px * 0.86, px * 0.18); g.stroke(); // moldura brilhante
+    if (gold) { g.shadowBlur = 0; g.fillStyle = '#fff'; g.font = '900 ' + Math.round(px * 0.22) + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.strokeStyle = '#7a4a00'; g.lineWidth = Math.max(1, px * 0.04); g.strokeText('×3', px * 0.27, px * 0.22); g.fillText('×3', px * 0.27, px * 0.22); }
+  }
+  function drawSnowball(g, px) { // v1.29: bola de neve da Nevasca (some quando a linha é limpa)
+    g.save(); Themes.roundRect(g, px * 0.06, px * 0.06, px * 0.88, px * 0.88, px * 0.18); g.clip();
+    g.fillStyle = '#9fc4e8'; g.fillRect(0, 0, px, px); g.restore();
+    var sb = g.createRadialGradient(px * 0.4, px * 0.38, px * 0.04, px * 0.5, px * 0.5, px * 0.42); sb.addColorStop(0, '#ffffff'); sb.addColorStop(0.7, '#e6f1ff'); sb.addColorStop(1, '#a9c6e6');
+    g.fillStyle = sb; g.beginPath(); g.arc(px * 0.5, px * 0.52, px * 0.36, 0, 7); g.fill();
+    g.fillStyle = 'rgba(120,160,210,.35)'; [[0.36, 0.62, 0.05], [0.6, 0.4, 0.04], [0.62, 0.66, 0.035]].forEach(function (d) { g.beginPath(); g.arc(px * d[0], px * d[1], px * d[2], 0, 7); g.fill(); });
+  }
+  function drawBow(g, x, y, px) {
+    g.fillStyle = '#ffd23f'; g.strokeStyle = '#c99a12'; g.lineWidth = Math.max(1, px * 0.02);
+    [-1, 1].forEach(function (d) { g.beginPath(); g.ellipse(x + d * px * 0.1, y - px * 0.04, px * 0.1, px * 0.065, d * 0.5, 0, 7); g.fill(); g.stroke(); });
+    g.beginPath(); g.arc(x, y - px * 0.01, px * 0.04, 0, 7); g.fill(); g.stroke();
+  }
+  function drawSnowPuff(ctx, x, y, s, u) { // nuvem de neve
+    ctx.fillStyle = '#ffffff';
+    for (var i = 0; i < 6; i++) { var a = i * 1.05, d = s * (0.12 + 0.4 * u); ctx.beginPath(); ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.7, s * (0.14 + 0.18 * (1 - u)), 0, 7); ctx.fill(); }
+  }
   function rareSprite(t, px) {
-    var key = t + px; if (rareCache[key]) return rareCache[key];
+    var gift = t === 'gf' || t === 'pg' || (t === 'pk' && evTheme() === 'natal');
+    var key = t + px + (gift ? 'g' : ''); if (rareCache[key]) return rareCache[key];
+    if (gift) { var gc = document.createElement('canvas'); gc.width = gc.height = px; drawGift(gc.getContext('2d'), px, 1, t === 'pg'); return (rareCache[key] = gc); }
+    if (t === 'sn') { var sc = document.createElement('canvas'); sc.width = sc.height = px; drawSnowball(sc.getContext('2d'), px); return (rareCache[key] = sc); }
     if (t === 'pk') { // v1.25 (ideia do dono): gaiolinha com morcego — quebre a linha para soltar o morcego
       var hc0 = document.createElement('canvas'); hc0.width = hc0.height = px; var h0 = hc0.getContext('2d');
       h0.save(); Themes.roundRect(h0, px * 0.06, px * 0.06, px * 0.88, px * 0.88, px * 0.18); h0.clip();
@@ -647,11 +716,24 @@
   var LEG_COL = { aurora: ['#3cffaa', '#50c8ff', '#be6eff'], glitch: ['#ff2bd6', '#2bf3ff', '#ffffff'], dragon: ['#ff5a1f', '#ffc23a', '#7a0f0f'], plasma: ['#9fe7ff', '#5a7bff', '#ffffff'], eye: ['#ff9a3c', '#ffe08a', '#7a2a00'], portal: ['#7a5bff', '#2bf3ff', '#ff6af0'], holo: ['#7fffe6', '#b38cff', '#ffffff'], galaxy: ['#ffbef0', '#c8dcff', '#fff6d8'], blackhole: ['#ffb347', '#ff6a2a', '#fff0c8'] };
   function legendLite() { return settings.anim !== 'full' || settings.quality === 'low'; }
   function drawPowerBadge(c2, pw, x, y, cell) {
+    // v1.27 (laboratório): selo de poder redesenhado — moeda dourada contornada com símbolo desenhado (antes: emoji num círculo escuro)
     var P2 = Season.POWERS[pw]; if (!P2) return;
-    var bx = x + cell * 0.78, by = y + cell * 0.22, br = cell * 0.2;
-    c2.save(); c2.fillStyle = 'rgba(12,8,24,.88)'; c2.beginPath(); c2.arc(bx, by, br, 0, 7); c2.fill();
-    c2.lineWidth = Math.max(1, cell * 0.035); c2.strokeStyle = '#ffd36b'; c2.stroke();
-    c2.font = Math.round(cell * 0.24) + 'px sans-serif'; c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText(P2.icon, bx, by + cell * 0.01);
+    var bx = x + cell * 0.76, by = y + cell * 0.24, br = cell * 0.21, lw = Math.max(1.2, cell * 0.045);
+    c2.save();
+    c2.fillStyle = '#05080F'; c2.beginPath(); c2.arc(bx + lw * 0.8, by + lw * 0.8, br, 0, 7); c2.fill(); // sombra carimbada
+    var g = c2.createLinearGradient(bx - br, by - br, bx + br, by + br); g.addColorStop(0, '#FFE39A'); g.addColorStop(0.55, '#F5B93A'); g.addColorStop(1, '#C4861A');
+    c2.fillStyle = g; c2.beginPath(); c2.arc(bx, by, br, 0, 7); c2.fill(); c2.lineWidth = lw; c2.strokeStyle = '#05080F'; c2.stroke();
+    powerGlyph(c2, pw, bx, by, br * 0.62);
+    c2.restore();
+  }
+  /** Símbolo de cada poder, desenhado (não depende de emoji do aparelho). */
+  function powerGlyph(c2, pw, cx, cy, r) {
+    c2.save(); c2.lineJoin = 'round'; c2.lineCap = 'round'; c2.fillStyle = '#05080F'; c2.strokeStyle = '#05080F'; c2.lineWidth = Math.max(1, r * 0.22);
+    c2.beginPath();
+    if (pw === 'z') { c2.moveTo(cx + r * 0.25, cy - r); c2.lineTo(cx - r * 0.55, cy + r * 0.12); c2.lineTo(cx - r * 0.02, cy + r * 0.12); c2.lineTo(cx - r * 0.25, cy + r); c2.lineTo(cx + r * 0.55, cy - r * 0.15); c2.lineTo(cx + r * 0.05, cy - r * 0.15); c2.closePath(); c2.fill(); }
+    else if (pw === 'd') { c2.moveTo(cx - r * 0.8, cy - r * 0.25); c2.lineTo(cx - r * 0.45, cy - r * 0.75); c2.lineTo(cx + r * 0.45, cy - r * 0.75); c2.lineTo(cx + r * 0.8, cy - r * 0.25); c2.lineTo(cx, cy + r * 0.85); c2.closePath(); c2.fill(); }
+    else if (pw === 'k') { c2.moveTo(cx - r * 0.85, cy + r * 0.6); c2.lineTo(cx - r * 0.85, cy - r * 0.5); c2.lineTo(cx - r * 0.35, cy); c2.lineTo(cx, cy - r * 0.8); c2.lineTo(cx + r * 0.35, cy); c2.lineTo(cx + r * 0.85, cy - r * 0.5); c2.lineTo(cx + r * 0.85, cy + r * 0.6); c2.closePath(); c2.fill(); }
+    else if (pw === 'r') { [0.95, 0.62, 0.3].forEach(function (k) { c2.beginPath(); c2.arc(cx, cy + r * 0.45, r * k, Math.PI * 1.05, Math.PI * 1.95); c2.stroke(); }); }
     c2.restore();
   }
   function drawRare(c2, t, x, y, cell, px, now, seed) {
@@ -673,9 +755,9 @@
     state.pieces.forEach(function (p) {
       if (!p || p.rq) return; p.rq = 1;
       var ev = state.mode === 'event' ? eventNow() : null, t = null; // v1.25: abóboras só no modo Evento
-      if (ev) t = Math.random() < ev.goalChance ? ev.rare : null; // v1.25 (dono): no modo Halloween só a gaiola — sem Vidro doce, Brasa ou Pérola
-      else { t = Season.rollRare(stats, state.score, Math.random); if (t === 'pk') t = null; } // gaiola do morcego nunca fora do evento
-      var lgR = FLAGS.legends && state.mode === 'classic' ? Season.rollLegend(stats, state.score, Math.random) : null; // v1.26: lendários só no Clássico
+      if (ev) { var tr0 = evTier() || ev; t = Math.random() < (tr0.chance != null && tr0 !== ev ? tr0.chance : ev.goalChance) ? ev.rare : null; if (t && tr0.gold && Math.random() < tr0.gold) t = 'pg'; } // v1.29: chance do nível + presente dourado // v1.25 (dono): no modo Halloween só a gaiola — sem Vidro doce, Brasa ou Pérola
+      else { t = Season.rollRare(stats, state.score, Math.random); if (t === 'pk' || t === 'gf') t = null; } // gaiola/presente nunca fora do evento
+      var lgR = null; // v1.31 (pedido do dono): os lendários viraram medalhas de coleção — não aparecem mais nas peças
       if (lgR) { p.rk = { k: Math.floor(Math.random() * SHAPES[p.s].cells.length), t: 'L:' + lgR.id + (lgR.pw ? ':' + lgR.pw : '') }; if (lgR.whole && SHAPES[p.s].cells.length > 1) p.rk.all = 1; return; }
       if (t) p.rk = { k: Math.floor(Math.random() * SHAPES[p.s].cells.length), t: t };
     });
@@ -710,6 +792,53 @@
       a.cells.forEach(function (x) { var hx = L.pad + x[1] * L.cell, hy = L.pad + x[0] * L.cell;
         ctx.globalAlpha = hal * 0.4; ctx.fillRect(hx + 3, hy + 3, L.cell - 6, L.cell - 6);
         ctx.globalAlpha = hal; Themes.roundRect(ctx, hx + 3, hy + 3, L.cell - 6, L.cell - 6, L.cell * 0.18); ctx.stroke(); });
+      ctx.restore(); return;
+    }
+    if (a.type === 'snowDrop') { // v1.29: bola de neve caindo do alto até a casa
+      var sd = (now - a.start) / a.dur; if (sd < 0 || sd >= 1) return;
+      var sx2 = L.pad + a.c * L.cell, syEnd = L.pad + a.r * L.cell, sy2 = syEnd - (1 - sd * sd) * (syEnd + L.cell);
+      ctx.save(); ctx.globalAlpha = 0.95; ctx.drawImage(rareSprite('sn', px), sx2, sy2, L.cell, L.cell); ctx.restore(); return;
+    }
+    if (a.type === 'flakes') { // v1.29: flocos saem dos blocos quebrados e caem girando
+      var ft0 = (now - a.start) / a.dur; if (ft0 < 0 || ft0 >= 1) return;
+      ctx.save(); ctx.strokeStyle = '#ffffff'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, L.cell * 0.04);
+      a.cells.forEach(function (o, i) {
+        var u = Math.max(0, Math.min(1, ft0 - (o.d || 0) / a.dur)); if (u <= 0) return;
+        var fx0 = L.pad + (o.c + 0.5) * L.cell + Math.sin(u * 6 + i) * L.cell * 0.25, fy0 = L.pad + (o.r + 0.5) * L.cell - L.cell * 0.4 * Math.sin(u * Math.PI) + L.cell * 0.6 * u * u;
+        var fr0 = L.cell * (0.16 + 0.06 * (i % 3)); ctx.globalAlpha = 0.9 * (1 - u);
+        ctx.save(); ctx.translate(fx0, fy0); ctx.rotate(u * 3 + i);
+        for (var sp = 0; sp < 3; sp++) { ctx.rotate(Math.PI / 3); ctx.beginPath(); ctx.moveTo(-fr0, 0); ctx.lineTo(fr0, 0); ctx.moveTo(fr0 * 0.55, 0); ctx.lineTo(fr0 * 0.8, fr0 * 0.22); ctx.moveTo(fr0 * 0.55, 0); ctx.lineTo(fr0 * 0.8, -fr0 * 0.22); ctx.stroke(); }
+        ctx.restore();
+      });
+      ctx.restore(); return;
+    }
+    if (a.type === 'batFlee' && a.xmas) { // v1.28: presente some numa nuvem de neve
+      var nt = (now - a.start) / a.dur; if (nt < 0 || nt >= 1) return;
+      var ncx = L.pad + (a.c + 0.5) * L.cell, ncy = L.pad + (a.r + 0.5) * L.cell;
+      ctx.save(); ctx.globalAlpha = Math.max(0, 1 - nt * 1.6); var ns = 1 - 0.7 * nt;
+      ctx.drawImage(rareSprite('gf', px), ncx - L.cell * ns / 2, ncy - L.cell * ns / 2, L.cell * ns, L.cell * ns);
+      ctx.globalAlpha = 0.85 * (1 - nt); drawSnowPuff(ctx, ncx, ncy - L.cell * 0.3 * nt, L.cell, nt);
+      ctx.restore(); return;
+    }
+    if (a.type === 'pkbreak' && a.xmas) { // v1.28: presente abre — a tampa voa, sai uma estrela dourada e brilhos
+      var xt = (now - a.start) / a.dur; if (xt >= 1) return;
+      if (state && state.board[a.r * SIZE + a.c] >= 0) return;
+      var xc = L.cell, xcx = L.pad + (a.c + 0.5) * xc, xcy = L.pad + (a.r + 0.5) * xc, xi;
+      ctx.save();
+      if (xt < 0.2) { var xsh = xt > 0 ? Math.sin(xt * 140) * xc * 0.05 : 0; ctx.drawImage(rareSprite(a.gold ? 'pg' : 'gf', px), xcx - xc / 2 + xsh, xcy - xc / 2, xc, xc); }
+      else {
+        var xu = (xt - 0.2) / 0.8;
+        ctx.globalAlpha = Math.max(0, 1 - xu * 1.4);
+        var boxC = document.createElement('canvas'); // caixa aberta (sem tampa)
+        boxC.width = boxC.height = Math.max(8, Math.round(xc)); drawGift(boxC.getContext('2d'), boxC.width, 0); ctx.drawImage(boxC, xcx - xc / 2, xcy - xc / 2, xc, xc);
+        ctx.save(); ctx.translate(xcx + xc * 0.5 * xu, xcy - xc * 0.2 - xc * 1.6 * xu + xc * 1.2 * xu * xu); ctx.rotate(xu * 2.2); // tampa voando
+        ctx.fillStyle = '#d82230'; Themes.roundRect(ctx, -xc * 0.32, -xc * 0.065, xc * 0.64, xc * 0.13, xc * 0.04); ctx.fill();
+        ctx.fillStyle = '#ffd23f'; ctx.fillRect(-xc * 0.04, -xc * 0.065, xc * 0.08, xc * 0.13); drawBow(ctx, 0, -xc * 0.07, xc); ctx.restore();
+        var sy = xcy - xc * 2.2 * xu, sr = xc * (0.18 + 0.12 * Math.sin(xu * 3.1)); // estrela subindo
+        ctx.globalAlpha = Math.min(1, 2.4 * (1 - xu)); ctx.fillStyle = '#ffd23f'; ctx.shadowColor = '#fff3b0'; ctx.shadowBlur = xc * 0.35;
+        ctx.beginPath(); for (xi = 0; xi < 10; xi++) { var ra = xi * Math.PI / 5 - Math.PI / 2 + xu * 2, rr = xi % 2 ? sr * 0.45 : sr; ctx.lineTo(xcx + Math.cos(ra) * rr, sy + Math.sin(ra) * rr); } ctx.closePath(); ctx.fill();
+        if (a.seeds && xu < 0.7) { ctx.shadowBlur = 0; for (xi = 0; xi < 8; xi++) { var qa = xi * 0.785 + a.c, qd = xc * (0.2 + xu); ctx.globalAlpha = 0.9 * (1 - xu / 0.7); ctx.fillStyle = EV_FX.natal[xi % 4]; ctx.beginPath(); ctx.arc(xcx + Math.cos(qa) * qd, xcy + Math.sin(qa) * qd, xc * 0.05, 0, 7); ctx.fill(); } }
+      }
       ctx.restore(); return;
     }
     if (a.type === 'batFlee') { // v1.25: morcego escapa voando, deixando um rastro de fumaça
@@ -791,6 +920,15 @@
         ctx.globalAlpha = flash * 0.85; ctx.fillStyle = '#fff1c8';
         ctx.beginPath(); ctx.arc(sx + sc0 / 2, sy + sc0 / 2, sc0 * (0.6 + st * 1.6), 0, 7); ctx.fill();
       }
+      ctx.restore(); return;
+    }
+    if (a.type === 'dust') { // v1.30: poeirinha ao assentar a peça
+      var dt = (now - a.start) / a.dur; if (dt < 0 || dt >= 1) return;
+      ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.globalAlpha = (1 - dt) * 0.8;
+      a.cells.forEach(function (rc) {
+        var bx = L.pad + rc[1] * L.cell, byy = L.pad + (rc[0] + 1) * L.cell - L.cell * 0.06;
+        [-1, 1].forEach(function (d) { for (var q = 0; q < 2; q++) { var off = L.cell * (0.1 + 0.45 * dt + q * 0.12); ctx.beginPath(); ctx.arc(bx + L.cell / 2 + d * (L.cell * 0.32 + off), byy - L.cell * 0.12 * dt - q * L.cell * 0.05, L.cell * (0.05 + 0.04 * (1 - dt)), 0, 7); ctx.fill(); } });
+      });
       ctx.restore(); return;
     }
     if (a.type === 'gem') { // gema subindo e sumindo com brilho
@@ -886,9 +1024,10 @@
       var shape = SHAPES[p.s], c = L.trayCell, px = Math.max(1, Math.round(c * dpr));
       slot.setAttribute('aria-label', shape.cells.length === 1 ? T('Peça de 1 bloco') : T('Peça de {n} blocos', { n: shape.cells.length }));
       var ox = (w - shape.w * c) / 2, oy = (h - shape.h * c) / 2;
-      shape.cells.forEach(function (sc) { ctx.drawImage(sprite(th, p.c, px), ox + sc[1] * c, oy + sc[0] * c, c, c); });
+      var legCells = {}; if (p.rk && String(p.rk.t || '').charAt(0) === 'L' && window.MZLegend) rareCellsOf(p).forEach(function (rc) { legCells[rc[0]] = 1; }); // v1.31
+      shape.cells.forEach(function (sc, k) { if (!legCells[k]) ctx.drawImage(sprite(th, p.c, px), ox + sc[1] * c, oy + sc[0] * c, c, c); });
       if (p.sp && shape.cells[p.sp.k]) drawSpecialOn(ctx, p.sp.t, ox + shape.cells[p.sp.k][1] * c, oy + shape.cells[p.sp.k][0] * c, c, px);
-      if (p.rk && (p.rk.t !== 'pk' || state.mode === 'event')) rareCellsOf(p).forEach(function (rc) { drawRare(ctx, rc[1], ox + shape.cells[rc[0]][1] * c, oy + shape.cells[rc[0]][0] * c, c, px, 0, rc[0]); });
+      if (p.rk && (!isEvItem(p.rk.t) || state.mode === 'event')) rareCellsOf(p).forEach(function (rc) { drawRare(ctx, rc[1], ox + shape.cells[rc[0]][1] * c, oy + shape.cells[rc[0]][0] * c, c, px, 0, rc[0]); });
       if (deal) { slot.classList.remove('deal'); void slot.offsetWidth; slot.classList.add('deal'); }
     });
   }
@@ -898,11 +1037,11 @@
     rotate: { name: 'Girar', icon: '🔄', tip: 'Toque numa peça embaixo para girar.' },
     hint: { name: 'Dica', icon: '💡', tip: '' } };
   var helperMode = null, shapeKeyMap = null;
-  function helpersOn() { return FLAGS.helpers && !!state && state.mode !== 'tutorial' && state.mode !== 'weekly' && !state.over; } // v1.26 (dono): sem ajudas no Desafio da Semana (regras iguais para todos e a prova da partida continua valendo)
+  function helpersOn() { return FLAGS.helpers && !!state && state.mode !== 'tutorial' && state.mode !== 'weekly' && !state.over && !(state.nightmare && natalGame()); } // v1.29: Noite Feliz/Nevasca sem ajudas // v1.26 (dono): sem ajudas no Desafio da Semana (regras iguais para todos e a prova da partida continua valendo)
   function helperCount(k) { return (stats.helpers && stats.helpers[k]) || 0; }
   function updateHelpers() {
     var bar = $('#helpers'); if (!bar) return;
-    bar.hidden = !state || state.mode === 'tutorial' || state.mode === 'weekly' || !(FLAGS.helpers || (FLAGS.zenNew && state.mode === 'zen'));
+    bar.hidden = !state || state.mode === 'tutorial' || state.mode === 'weekly' || (state.nightmare && natalGame()) || !(FLAGS.helpers || (FLAGS.zenNew && state.mode === 'zen')); // v1.29: Noite Feliz/Nevasca sem ajudas
     Array.prototype.forEach.call(bar.querySelectorAll('[data-h]'), function (b) { b.hidden = !FLAGS.helpers; });
     Array.prototype.forEach.call(bar.querySelectorAll('[data-h]'), function (b) {
       var k = b.getAttribute('data-h'), n = helperCount(k);
@@ -986,6 +1125,17 @@
   /* ---------------- v1.26 (dono): ZEN NOVO — jardim que cresce, quadro pintado pelas linhas, desfazer e trocar à vontade ---------------- */
   var ZEN_PAL = ['#f6b8c4', '#ffd6a5', '#fdf3a7', '#c5ecc0', '#a8dcef', '#c7c3f5', '#f4c6ec', '#b9e7dc'];
   var ZEN_PLANT = 12, zenHist = [], zenDrawn = '';
+  // v1.27 (laboratório): cada quadro esconde um desenho (arte original 8×8); as linhas limpas revelam as casas. Dígito = cor de ZEN_PAL.
+  var ZEN_PICS = [
+    { name: 'Pôr do sol', rows: ['11111111', '11122111', '11222211', '00222200', '44444444', '44424444', '44442444', '44444444'] },
+    { name: 'Montanha', rows: ['44444224', '44444224', '44454444', '44555444', '45555544', '55535555', '33333333', '33337333'] },
+    { name: 'Flor', rows: ['44444444', '44400444', '44022044', '44400444', '44434444', '44334444', '44434444', '33333333'] },
+    { name: 'Peixe', rows: ['44444444', '44447444', '44111144', '41111514', '41111114', '44111144', '44444474', '66666666'] },
+    { name: 'Casinha', rows: ['44442244', '44400444', '44000044', '40000004', '41111114', '41151124', '41151114', '33333333'] },
+    { name: 'Arco-íris', rows: ['44444444', '40000004', '01111110', '12222221', '23444432', '34444443', '44444444', '33333333'] }
+  ];
+  function zenPic(i) { var p = ZEN_PICS[((i % ZEN_PICS.length) + ZEN_PICS.length) % ZEN_PICS.length]; return p.rows.join(''); }
+  function zenPicNow() { return zenPic(zenData().art.length); }
   function zenOn() { return FLAGS.zenNew && !!state && state.mode === 'zen'; }
   function zenData() { if (!stats.zen || typeof stats.zen !== 'object') stats.zen = { garden: 0, art: [] }; if (!Array.isArray(stats.zen.art)) stats.zen.art = []; stats.zen.garden = Math.max(0, +stats.zen.garden || 0); return stats.zen; }
   function zenHash(n) { var x = Math.sin(n * 91.7 + 17.3) * 43758.5453; return x - Math.floor(x); }
@@ -994,24 +1144,27 @@
     var dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth || cv.width / dpr, H = cv.clientHeight || cv.height / dpr;
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     var c2 = cv.getContext('2d'); c2.setTransform(dpr, 0, 0, dpr, 0, 0); c2.clearRect(0, 0, W, H);
-    var sky = c2.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, 'rgba(255,240,250,.16)'); sky.addColorStop(1, 'rgba(200,240,220,.10)');
+    var sky = c2.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#9fd8f2'); sky.addColorStop(0.7, '#fde4ec'); sky.addColorStop(1, '#fff1d6'); // v1.27: céu de verdade
     c2.fillStyle = sky; Themes.roundRect(c2, 0, 0, W, H, 14); c2.fill();
     var ground = H * 0.8;
     c2.save(); Themes.roundRect(c2, 0, 0, W, H, 14); c2.clip();
+    c2.fillStyle = '#ffe9a3'; c2.beginPath(); c2.arc(W * 0.86, H * 0.26, H * 0.13, 0, 7); c2.fill(); // sol
+    c2.fillStyle = 'rgba(255,255,255,.85)'; [[0.2, 0.22, 1], [0.27, 0.18, 1.3], [0.34, 0.23, 0.9]].forEach(function (q) { c2.beginPath(); c2.arc(W * q[0], H * q[1], H * 0.07 * q[2], 0, 7); c2.fill(); }); // nuvem
+    c2.fillStyle = '#b6e0b0'; c2.beginPath(); c2.moveTo(0, ground); c2.quadraticCurveTo(W * 0.25, ground - H * 0.32, W * 0.55, ground - H * 0.05); c2.quadraticCurveTo(W * 0.8, ground - H * 0.28, W, ground - H * 0.08); c2.lineTo(W, H); c2.lineTo(0, H); c2.closePath(); c2.fill(); // morros ao fundo
     c2.fillStyle = '#7bbf7a'; c2.beginPath(); c2.moveTo(0, H); c2.lineTo(0, ground);
     for (var x = 0; x <= W; x += 8) c2.lineTo(x, ground + Math.sin(x / 23) * 2.5); c2.lineTo(W, H); c2.closePath(); c2.fill();
     c2.fillStyle = '#5ea66a'; for (var gx = 4; gx < W; gx += 9) c2.fillRect(gx, ground + 2 + zenHash(gx) * 4, 1.5, 3); // grama
     var n = Math.min(ZEN_PLANT, 1 + Math.floor(g / 12));
     for (var i = 0; i < n; i++) {
       var grow = Math.max(0.12, Math.min(1, (g - i * 12) / 12)), slot = (i * 5) % ZEN_PLANT; // novas plantas nascem espalhadas
-      var px0 = W * (slot + 0.5) / ZEN_PLANT + (zenHash(i) - 0.5) * W / ZEN_PLANT * 0.5, maxH = H * (0.5 + 0.22 * zenHash(i + 9)), ph = maxH * grow, kind = i % 5;
-      c2.strokeStyle = '#4f9a58'; c2.lineWidth = 2; c2.lineCap = 'round';
+      var px0 = W * (slot + 0.5) / ZEN_PLANT + (zenHash(i) - 0.5) * W / ZEN_PLANT * 0.5, maxH = H * (0.5 + 0.24 * zenHash(i + 9)), ph = maxH * grow, kind = i % 5;
+      c2.strokeStyle = '#3f8a4a'; c2.lineWidth = 2.6; c2.lineCap = 'round';
       c2.beginPath(); c2.moveTo(px0, ground + 2); c2.quadraticCurveTo(px0 + 3, ground - ph / 2, px0, ground - ph); c2.stroke(); // caule
       c2.fillStyle = '#6cc070';
       [0.35, 0.6].forEach(function (f, k) { if (grow < f - 0.2) return; var ly = ground - ph * f, d = k ? -1 : 1; c2.beginPath(); c2.ellipse(px0 + d * 5, ly, 5.5, 2.4, d * -0.5, 0, 7); c2.fill(); }); // folhas
       var top = ground - ph, col = ZEN_PAL[(i * 3) % ZEN_PAL.length];
       if (grow < 0.7) { c2.fillStyle = '#8fd18f'; c2.beginPath(); c2.ellipse(px0, top, 2.5, 3.5, 0, 0, 7); c2.fill(); continue; } // broto
-      var bloom = grow >= 1 ? 1 : 0.55, r = 6.5 * bloom;
+      var bloom = grow >= 1 ? 1 : 0.55, r = Math.min(9, H * 0.11) * bloom;
       if (kind === 0) { c2.fillStyle = col; c2.beginPath(); c2.moveTo(px0 - r, top - r * 0.2); c2.quadraticCurveTo(px0, top + r * 1.4, px0 + r, top - r * 0.2); c2.lineTo(px0 + r * 0.5, top - r); c2.lineTo(px0, top - r * 0.4); c2.lineTo(px0 - r * 0.5, top - r); c2.closePath(); c2.fill(); } // tulipa
       else if (kind === 1 || kind === 2) { // margarida / girassol
         c2.fillStyle = kind === 2 ? '#ffd45c' : '#fffaf0';
@@ -1025,7 +1178,7 @@
     c2.restore();
   }
   /** Desenha um quadro (64 casas: '.' = sem tinta, '0'..'7' = cor pastel). */
-  function drawArt(cv, art) {
+  function drawArt(cv, art, sketch) {
     var dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth || cv.width / dpr;
     if (cv.width !== Math.round(W * dpr)) { cv.width = cv.height = Math.round(W * dpr); }
     var c2 = cv.getContext('2d'); c2.setTransform(dpr, 0, 0, dpr, 0, 0); c2.clearRect(0, 0, W, W);
@@ -1033,7 +1186,9 @@
     c2.fillStyle = '#b98a5a'; Themes.roundRect(c2, 0, 0, W, W, W * 0.1); c2.fill(); // moldura de madeira
     c2.fillStyle = '#fbf6ec'; c2.fillRect(fr, fr, inner, inner); // tela
     for (var i = 0; i < SIZE * SIZE; i++) {
-      var d = art ? art.charAt(i) : '.'; if (d === '.' || d === '') continue;
+      var d = art ? art.charAt(i) : '.';
+      if ((d === '.' || d === '') && sketch) { c2.globalAlpha = 0.22; c2.fillStyle = ZEN_PAL[+sketch.charAt(i) % ZEN_PAL.length]; c2.fillRect(fr + (i % SIZE) * k + k * 0.3, fr + Math.floor(i / SIZE) * k + k * 0.3, k * 0.4, k * 0.4); c2.globalAlpha = 1; continue; }
+      if (d === '.' || d === '') continue;
       c2.globalAlpha = 0.8 + 0.2 * zenHash(i); c2.fillStyle = ZEN_PAL[+d % ZEN_PAL.length];
       Themes.roundRect(c2, fr + (i % SIZE) * k - 0.3, fr + Math.floor(i / SIZE) * k - 0.3, k + 0.6, k + 0.6, k * 0.3); c2.fill();
     }
@@ -1047,9 +1202,9 @@
     Array.prototype.forEach.call(document.querySelectorAll('#helpers .zen-only'), function (b) { b.hidden = !zenOn(); });
     if (Sound.setCalm) Sound.setCalm(on);
     if (!zenOn()) return;
-    var key = zenData().garden + '|' + zenArtNow() + '|' + ($('#zen-garden').clientWidth || 0);
+    var key = zenData().garden + '|' + zenArtNow() + '|' + zenData().art.length + '|' + ($('#zen-garden').clientWidth || 0);
     if (key === zenDrawn) return; zenDrawn = key;
-    drawGarden($('#zen-garden'), zenData().garden); drawArt($('#zen-art'), zenArtNow());
+    drawGarden($('#zen-garden'), zenData().garden); drawArt($('#zen-art'), zenArtNow(), zenPicNow());
     var plants = Math.min(ZEN_PLANT, 1 + Math.floor(zenData().garden / 12));
     $('#zen-garden').setAttribute('aria-label', T('Seu jardim: {n} plantas', { n: plants }));
   }
@@ -1058,7 +1213,8 @@
     var z = zenData(), before = Math.min(ZEN_PLANT, 1 + Math.floor(z.garden / 12));
     z.garden += res.lineCount;
     var art = zenArtNow().split('');
-    res.cleared.forEach(function (o) { art[o.r * SIZE + o.c] = String(((o.color % 8) + 8) % 8); });
+    var pic = zenPicNow();
+    res.cleared.forEach(function (o) { art[o.r * SIZE + o.c] = pic.charAt(o.r * SIZE + o.c); });
     state.art = art.join('');
     if (state.art.indexOf('.') === -1) { // quadro pronto → vai para a galeria
       z.art.unshift(state.art); if (z.art.length > 40) z.art.length = 40; state.art = null;
@@ -1103,7 +1259,8 @@
     dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     dctx.clearRect(0, 0, w, h);
     var th = boardTheme();
-    shape.cells.forEach(function (sc) { dctx.drawImage(sprite(th, piece.c, px), sc[1] * cell, sc[0] * cell, cell, cell); });
+    var legCells = {}; if (piece.rk && String(piece.rk.t || '').charAt(0) === 'L' && window.MZLegend) rareCellsOf(piece).forEach(function (rc) { legCells[rc[0]] = 1; }); // v1.31
+    shape.cells.forEach(function (sc, k) { if (!legCells[k]) dctx.drawImage(sprite(th, piece.c, px), sc[1] * cell, sc[0] * cell, cell, cell); });
     if (piece.sp && shape.cells[piece.sp.k]) drawSpecialOn(dctx, piece.sp.t, shape.cells[piece.sp.k][1] * cell, shape.cells[piece.sp.k][0] * cell, cell, px);
     if (piece.rk) rareCellsOf(piece).forEach(function (rc) { drawRare(dctx, rc[1], shape.cells[rc[0]][1] * cell, shape.cells[rc[0]][0] * cell, cell, px, 0, rc[0]); });
   }
@@ -1176,8 +1333,25 @@
     if (d.t0) requestAnimationFrame(liftTick);
   }
 
+  /* v1.30 (laboratório, chave juice): a peça arrastada inclina para o lado do movimento e volta ao parar (como uma carta balançando) */
+  var tilt = { a: 0, target: 0, raf: 0, lx: 0, lt: 0 };
+  function tiltOn() { return !!FLAGS.juice && settings.anim === 'full' && settings.quality !== 'low'; }
+  function tiltTick() {
+    tilt.target *= 0.82; tilt.a += (tilt.target - tilt.a) * 0.3;
+    if (drag && !dragCanvas.hidden && (Math.abs(tilt.a) > 0.05 || Math.abs(tilt.target) > 0.05)) { dragCanvas.style.rotate = tilt.a.toFixed(2) + 'deg'; tilt.raf = requestAnimationFrame(tiltTick); }
+    else { tilt.raf = 0; tilt.a = 0; dragCanvas.style.rotate = ''; }
+  }
+  function tiltFeed(x) {
+    if (!tiltOn()) return;
+    var t = performance.now();
+    if (tilt.lt && t > tilt.lt) tilt.target = Math.max(-11, Math.min(11, (x - tilt.lx) / Math.max(8, t - tilt.lt) * 16));
+    tilt.lx = x; tilt.lt = t;
+    if (!tilt.raf) tilt.raf = requestAnimationFrame(tiltTick);
+  }
+  function tiltReset() { tilt.lt = 0; tilt.target = 0; tilt.a = 0; dragCanvas.style.rotate = ''; if (window.MZMascot) MZMascot.look(); }
   function moveDrag(x, y) {
-    var d = drag;
+    var d = drag; tiltFeed(x);
+    if (mascotOn() && settings.anim !== 'off') MZMascot.look(x, y); // v1.30: o Kabloquinho acompanha a peça com os olhos
     var fx = d.sx + (x - d.sx) * (d.k || 1), fy = d.sy + (y - d.sy) * (d.k || 1); // ponto "acelerado"
     d.left = fx - d.w / 2;
     d.top = d.touch ? fy - d.h - d.lift : fy - d.h / 2;
@@ -1224,6 +1398,7 @@
   window.addEventListener('blur', function () { if (drag) endDrag(false); });
 
   function endDrag(drop) {
+    tiltReset();
     var d = drag; drag = null;
     if (!d) return;
     var slot = slots[d.slot];
@@ -1339,6 +1514,9 @@
       rareCellsOf(placedPiece).forEach(function (rv) { var rc = SHAPES[placedPiece.s].cells[rv[0]], ix = (r + rc[0]) * SIZE + c + rc[1]; state.rare[ix] = rv[1]; rkSet.push(ix); }); // v1.26: peça inteira lendária
     }
     var res = Logic.place(state, slot, r, c, rngFor(state));
+    var feverNow = false; // v1.30 (laboratório, chave febre): combo ×5 no Clássico liga a Febre — 3 jogadas valendo pontos em dobro
+    if (res && FLAGS.febre && state.mode === 'classic' && res.combo >= 5 && prevCombo < 5 && !((state.fever | 0) > 0)) { state.fever = 3; feverNow = true; }
+    var feverEnded = !!(res && res.fever && !((state.fever | 0) > 0));
     if (!res) { rkSet.forEach(function (ix) { delete state.rare[ix]; }); return false; }
     var rareGone = [], lastRareKinds = {};
     if (state.rare) Object.keys(state.rare).forEach(function (k) { if (state.board[+k] < 0) { rareGone.push(+k); lastRareKinds[+k] = state.rare[k]; delete state.rare[k]; } });
@@ -1348,11 +1526,15 @@
     if (snap && zenOn()) { zenHist.push({ snap: snap, stats: statsSnap }); if (zenHist.length > 30) zenHist.shift(); } // v1.26: Zen desfaz à vontade
     if (!res.lineCount) announce(T('Peça colocada.'));
     var now = animNow(), lvl = settings.anim, th = boardTheme(), geo = { cell: L.cell, pad: L.pad, size: L.size };
-    var colorOf = function (ci) { if (evGame()) return ['#ff8a1f', '#9b4dff', '#ffb347', '#6a2fd1'][ci % 4]; var p = pal(th); return p[ci % p.length]; }; // v1.25: faíscas assombradas no evento
+    var colorOf = function (ci) { if (evGame()) return EV_FX[evTheme()][ci % 4]; var p = pal(th); return p[ci % p.length]; }; // v1.25: faíscas assombradas no evento
     Sound.placeSkin(curSkin());
     if (!res.lineCount) haptic('place'); // toque firme a cada peça encaixada
     // encaixe: pequena expansão e retorno + faíscas discretas
     if (lvl !== 'off') anims.push({ type: 'pop', cells: res.placed, color: res.color, theme: th, start: now, dur: lvl === 'full' ? 220 : 140 });
+    if (FLAGS.juice && lvl === 'full' && settings.quality !== 'low' && state.mode !== 'zen') { // v1.30: poeirinha nas bordas de baixo da peça que assentou
+      var placedSet = {}; res.placed.forEach(function (rc) { placedSet[rc[0] * SIZE + rc[1]] = 1; });
+      anims.push({ type: 'dust', cells: res.placed.filter(function (rc) { return !placedSet[(rc[0] + 1) * SIZE + rc[1]]; }).slice(0, 5), start: now + 40, dur: 420 });
+    }
     if (partsOn()) anims.push(Fx.sparks(res.placed, colorOf(res.color), geo, now, anims));
     if (evGame()) { // v1.25: álbum do evento — participação (selo), blocos vistos e mais abóboras numa partida
       var evA = eventNow(), alb = stats.events[evA.id] = stats.events[evA.id] || { played: 1, seen: {}, pk: 0 };
@@ -1361,28 +1543,48 @@
     }
     if (evGame()) { // v1.25 (dono): o morcego foge se a gaiola não for quebrada a tempo
       state.evMoves = (state.evMoves || 0) + 1; state.pkAge = state.pkAge || {};
-      Object.keys(state.pkAge).forEach(function (k) { if (!state.rare || state.rare[k] !== 'pk') delete state.pkAge[k]; });
-      if (state.rare) Object.keys(state.rare).forEach(function (k) { if (state.rare[k] === 'pk' && state.pkAge[k] == null) state.pkAge[k] = state.evMoves; });
+      Object.keys(state.pkAge).forEach(function (k) { if (!state.rare || !isEvItem(state.rare[k])) delete state.pkAge[k]; });
+      if (state.rare) Object.keys(state.rare).forEach(function (k) { if (isEvItem(state.rare[k]) && state.pkAge[k] == null) state.pkAge[k] = state.evMoves; });
       var fled = 0;
       Object.keys(state.pkAge).forEach(function (k) {
-        if (state.evMoves - state.pkAge[k] < evFlee()) return;
+        if (state.evMoves - state.pkAge[k] < itemFlee(state.rare[k])) return;
         delete state.pkAge[k]; delete state.rare[k]; fled++;
         var fr = Math.floor(+k / SIZE), fc = +k % SIZE;
-        if (lvl !== 'off') anims.push({ type: 'batFlee', r: fr, c: fc, start: now + 150, dur: 1000 });
-        popup('🦇 ' + T('Fugiu!'), [fr, fc], 'pts-small', 0.4, false, 200);
+        if (lvl !== 'off') anims.push({ type: 'batFlee', r: fr, c: fc, xmas: natalGame(), start: now + 150, dur: 1000 });
+        popup(natalGame() ? '❄️ ' + T('Sumiu!') : '🦇 ' + T('Fugiu!'), [fr, fc], 'pts-small', 0.4, false, 200);
       });
-      if (fled) { later(function () { Sound.ghost && Sound.ghost(); }, 200); announce(T('Um morcego fugiu!')); }
+      if (fled && natalGame()) { later(function () { Sound.poof && Sound.poof(); }, 200); announce(T('Um presente sumiu na neve!')); }
+      else if (fled) { later(function () { Sound.ghost && Sound.ghost(); }, 200); announce(T('Um morcego fugiu!')); }
+      var tz = evTier();
+      if (tz && tz.snow && !state.over && state.evMoves % tz.snow === 0) dropSnowball(now, lvl); // v1.29: Nevasca — cai uma bola de neve no tabuleiro
     }
-    var pkGone = rareGone.filter(function (ri) { return lastRareKinds[ri] === 'pk'; }).length;
+    if (res.lineCount && natalOn() && state.mode !== 'tutorial' && window.MZNatal) { // v1.29: árvore de Natal — uma luz por linha limpa em dezembro
+      var tr = MZNatal.addLines(stats, res.lineCount); saveStats();
+      if (tr.done) reward('trophy', T('A árvore de Natal acendeu inteira! 🌟'), T('Você ganhou o {b}, guardado para sempre.', { b: T('Selo Árvore Acesa 2026') }));
+      else if (tr.milestone) reward('trophy', T('A árvore ganhou mais luzes! 🎄'), T('{a} de {b} luzes acesas.', { a: tr.lit, b: MZNatal.TREE_LIGHTS }));
+    }
+    var pkGone = rareGone.reduce(function (n, ri) { return n + (lastRareKinds[ri] === 'pg' ? 3 : lastRareKinds[ri] === 'pk' ? 1 : 0); }, 0); // v1.29: dourado vale 3
     if (pkGone) { // v1.24: Semana do Terror — abóboras limpas
       state.pk = (state.pk || 0) + pkGone;
       var evP = eventNow(); if (evP && stats.events[evP.id] && state.pk > (stats.events[evP.id].pk || 0)) { stats.events[evP.id].pk = state.pk; saveStats(); }
+      if (evP && evP.theme === 'natal' && stats.events[evP.id]) { // v1.29: recorde de cada nível + "faltam só N!"
+        var tb = stats.events[evP.id].best = stats.events[evP.id].best || {}, tn = state.tier === 3 ? 3 : state.nightmare ? 2 : 1;
+        if (state.pk > (tb[tn] || 0)) { tb[tn] = state.pk; saveStats(); }
+        var gl = evGoal(), was = state.pk - pkGone;
+        if (!state.pkDone && state.pk < gl && was < gl - 5 && state.pk >= gl - 5) popup(T('Faltam só {n}! 🎁', { n: gl - state.pk }), [2.6, 3.5], 'combo-big hot', 0, false, 300);
+        else if (!state.pkDone && state.pk === gl - 1) popup(T('Só mais 1! 🎁'), [2.6, 3.5], 'combo-big hot', 0, false, 300);
+        if (pkGone >= 3 && lastRareKinds && rareGone.some(function (ri) { return lastRareKinds[ri] === 'pg'; })) popup('✨ ' + T('Presente dourado! +3'), [1.4, 3.5], 'pts-small', 0, false, 100);
+      }
       var evn = eventNow();
       if (state.mode === 'event' && evn && !state.pkDone && state.pk >= evGoal()) {
-        state.pkDone = true; stats.rares = stats.rares || {}; stats.rares.pk = 1;
-        if (state.nightmare) { var evN = stats.events[evn.id] = stats.events[evn.id] || { played: 1, seen: {}, pk: 0 }; evN.nightmare = 1; }
+        state.pkDone = true; stats.rares = stats.rares || {}; stats.rares[evPrize()] = 1;
+        if (state.nightmare && state.tier !== 3) { var evN = stats.events[evn.id] = stats.events[evn.id] || { played: 1, seen: {}, pk: 0 }; evN.nightmare = 1; }
         saveStats();
-        if (state.nightmare) reward('trophy', T('Pesadelo vencido! 👹'), T('Você ganhou o {b}, guardado para sempre.', { b: T(evn.nightmare.badge) }));
+        if (evn.theme === 'natal') { // v1.28
+          if (state.tier === 3) { stats.events[evn.id].storm = 1; saveStats(); reward('trophy', T('Nevasca vencida! ❄️'), T('Você ganhou o {b}, guardado para sempre. Pouca gente consegue!', { b: T(evn.storm.badge) })); }
+          else if (state.nightmare) reward('trophy', T('Noite Feliz vencida! 🌟'), T('Você ganhou o {b}, guardado para sempre. Agora encare a Nevasca!', { b: T(evn.nightmare.badge) }));
+          else reward('trophy', T('Desafio de Natal concluído! 🎄'), T('Você é Ajudante do Noel! Ganhou a conquista e liberou a Fase Noite Feliz.'));
+        } else if (state.nightmare) reward('trophy', T('Pesadelo vencido! 👹'), T('Você ganhou o {b}, guardado para sempre.', { b: T(evn.nightmare.badge) }));
         else reward('trophy', T('Desafio do evento concluído! 🎃'), T('Você é Caçador de Morcegos! Ganhou a conquista e liberou a Fase Pesadelo.'));
         later(function () { Sound.record(); }, 400);
       }
@@ -1390,8 +1592,9 @@
     if (rareGone.length) { // v1.24: limpar bloco raro faz festa (brilho branco + som de recompensa)
       rareGone.forEach(function (ri, n) { if (partsOn()) anims.push(Fx.sparks([[Math.floor(ri / SIZE), ri % SIZE]], '#ffffff', geo, now + 200 + n * 60, anims)); });
       later(function () { Sound.star && Sound.star(); }, 260);
-      var rareTxt = rareGone.filter(function (ri) { return lastRareKinds[ri] !== 'pk'; })[0]; // v1.25: abóbora já tem contador e quebra própria — sem texto extra
-      if (rareTxt != null) popup('✨ ' + rareName(lastRareKinds[rareTxt]), [Math.floor(rareTxt / SIZE), rareTxt % SIZE], 'pts-small', 0.6, false, 250);
+      var rareTxt = rareGone.filter(function (ri) { return !isEvItem(lastRareKinds[ri]) && lastRareKinds[ri] !== 'sn'; })[0]; // v1.25: abóbora já tem contador e quebra própria — sem texto extra
+      var hasPw = res.special && res.special.legend && res.special.legend.length;
+      if (rareTxt != null && !(hasPw && FLAGS.legends)) popup('✨ ' + rareName(lastRareKinds[rareTxt]), [Math.floor(rareTxt / SIZE), rareTxt % SIZE], 'pts-small', 0.6, false, 250);
       var legGone = rareGone.filter(function (ri) { return Season.legendOf(lastRareKinds[ri]); }); // v1.26: explosão própria de cada lendário (nas cores dele)
       if (legGone.length) {
         if (partsOn()) legGone.slice(0, 6).forEach(function (ri, n) { var lg = Season.legendOf(lastRareKinds[ri]); (LEG_COL[lg.id] || ['#fff']).forEach(function (col, j) { anims.push(Fx.sparks([[Math.floor(ri / SIZE), ri % SIZE]], col, geo, now + 140 + n * 50 + j * 90, anims)); }); });
@@ -1401,7 +1604,9 @@
     }
     if (res.special && res.special.legend && res.special.legend.length) { // v1.26: poderes dos lendários
       var PW_TXT = { z: '⚡ ' + T('Raio!'), d: '💎 ' + T('Diamante!'), k: '👑 ' + T('Coroa: jogada em dobro!'), r: '🌈 ' + T('Arco-íris!') };
-      res.special.legend.forEach(function (lp, n) { popup(PW_TXT[lp.pw], [lp.r, lp.c], 'pts-small', 0.9, false, 420 + n * 300); });
+      // v1.27 (laboratório): um aviso só, na fila das mensagens grandes (antes vários textos se amontoavam em cima do combo)
+      var pwSeen = {}, pwTxt = res.special.legend.filter(function (lp) { if (pwSeen[lp.pw]) return false; pwSeen[lp.pw] = 1; return !!PW_TXT[lp.pw]; }).map(function (lp) { return PW_TXT[lp.pw]; });
+      if (pwTxt.length) popup(pwTxt.join(' · '), [SIZE - 2, SIZE / 2 - 0.5], 'legend-pw', 0, false, 380);
       later(function () { Sound.record && Sound.record(); }, 380);
     }
 
@@ -1449,11 +1654,12 @@
         if (settings.fx !== 'off' && !zen) anims.push({ type: 'beam', rows: res.rows.slice(), cols: res.cols.slice(), rainbow: res.lineCount >= 2 || res.combo >= 3,
           color: colorOf(res.color), start: now + charge * 0.5, dur: lvl === 'full' ? 520 : 360 });
         cells.forEach(function (o) { // v1.25: gaiolas da Semana do Terror quebram e soltam o morcego
-          var ri0 = o.r * SIZE + o.c; if (lastRareKinds[ri0] !== 'pk') return;
+          var ri0 = o.r * SIZE + o.c; if (!isEvItem(lastRareKinds[ri0])) return;
           o.pk = true;
-          anims.push({ type: 'pkbreak', r: o.r, c: o.c, seeds: lvl === 'full' && !zen && settings.quality !== 'low', start: now + charge + o.d, dur: 900 });
+          anims.push({ type: 'pkbreak', r: o.r, c: o.c, xmas: natalGame(), gold: lastRareKinds[ri0] === 'pg', seeds: lvl === 'full' && !zen && settings.quality !== 'low', start: now + charge + o.d, dur: 900 });
         });
-        var haunted = evGame() && lvl === 'full'; // v1.25: quebra assombrada (fumaça roxa e laranja, fantasmas sobem, morcegos voam)
+        if (natalGame() && lvl !== 'off' && !zen) anims.push({ type: 'flakes', cells: cells.slice(0, 16), start: now + charge, dur: 1000 }); // v1.29: quebra com flocos de neve
+        var haunted = terrorGame() && lvl === 'full'; // v1.25: quebra assombrada (fumaça roxa e laranja, fantasmas sobem, morcegos voam)
         if (haunted) { custom = false; cellDur = 560; }
         anims.push({ type: 'clear', cells: cells, theme: th, hw: haunted, ghost: curSkin() === 'theme', skin: custom ? skinNow : null, start: now + charge, cellDur: cellDur, dur: maxD + cellDur });
         if (partsOn() && !custom && !zen) anims.push(Fx.burst(res.cleared, colorOf, geo, now, intensity, anims, charge));
@@ -1470,9 +1676,11 @@
         else if (tier >= 2 && res.lineCount < 2) anims.push({ type: 'glowCells', cellsFn: filled, color: '#ffffff', peak: 0.16, start: now + charge, dur: 420 });
         if (res.boardClear) anims.push({ type: 'bloom', size: SIZE, start: now + charge + 250, dur: 1200 });
       }
+      if (res.boardClear || tier >= 3 || res.combo >= 5) mascot('wow', 1100); else mascot('happy', 800); // v1.30: mascote comemora
       var breakSkin = curSkin();
       // v1.23 (menos poluição sonora): escala + UM detalhe — combo (se houver), senão a quebra do estilo, senão o "boom"
-      if (res.combo >= 3 && evGame() && Math.random() < 0.5) later(function () { Sound.ghost(); }, 300); // v1.24: fantasma no combo (evento)
+      if (res.combo >= 3 && evGame() && Math.random() < 0.5) later(function () { if (natalGame()) Sound.jingle(); else Sound.ghost(); }, 300);
+      else if (natalGame()) later(function () { Sound.bell(); }, 120); // v1.29: sininho na quebra (Natal) // v1.24: fantasma no combo (evento)
     if (res.combo >= 2) { Sound.clear(res.lineCount, res.combo, null); Sound.combo(res.combo); }
       else if (Sound.hasBreak(breakSkin)) { Sound.clear(res.lineCount, res.combo, null); later(function () { Sound.breakSkin(breakSkin, res.lineCount); }, charge * 0.6); }
       else Sound.clear(res.lineCount, res.combo, 'boom');
@@ -1487,22 +1695,44 @@
       var mid = SIZE / 2 - 0.5, lane = res.boardClear ? { points: 6.7 } : { points: 0 };
       var pr = lane.points || (origin[0] < 4.6 ? 5.8 : Math.min(SIZE - 1.2, origin[0]));
       // v1.23 (menos poluição): pontos pequenos junto da peça; UMA mensagem grande por vez (combo, se houver; senão o elogio)
-      popup('+' + fmt(res.gained), res.boardClear ? [pr, mid] : [Math.max(0.6, Math.min(SIZE - 0.8, origin[0] - 0.6)), Math.max(1, Math.min(SIZE - 2, origin[1]))], 'pts-small', 0);
+      var flyMs = FLAGS.juice && settings.anim === 'full' && !zen ? (res.boardClear ? 650 : 380) : 0;
+      if (!flyMs) popup('+' + fmt(res.gained), res.boardClear ? [pr, mid] : [Math.max(0.6, Math.min(SIZE - 0.8, origin[0] - 0.6)), Math.max(1, Math.min(SIZE - 2, origin[1]))], 'pts-small', 0);
+      if (flyMs) { flyToScore('+' + fmt(res.gained), res.boardClear ? [4.2, mid] : origin, flyMs); scoreHoldUntil = Date.now() + flyMs + 700; } // v1.30: pontos voam até o placar (o placar sobe quando chegam)
       var rec3 = (state.recent || []).slice(-3), streak = rec3.length === 3 && rec3.every(function (v) { return v > 0; });
-      var word = res.combo >= 2 || res.boardClear ? '' : praiseFor(tier, res.boardClear, res.combo, streak);
+      var word = res.combo >= 2 || res.boardClear || hypeOn() ? '' : praiseFor(tier, res.boardClear, res.combo, streak);
       if (word) popup(word, [2.6, mid], 'praise t' + (word === T('Imparável!') ? 4 : tier), 0);
-      if (res.combo >= 2 && !res.boardClear) { // combo em destaque: número grande + pontos extras do combo; combos altos ganham cor e confete
-        var cbCls = 'combo-big' + (res.combo >= 10 ? ' mega' : res.combo >= 5 ? ' hot' : '');
+      var hyped = false;
+      // v1.31 (dono: "a fala tá muito frequente e as animações também"): a fala grande aparece só nos momentos que
+      // valem: 3+ linhas, 2 linhas no máximo a cada 6 s, e o combo só nos marcos (7, 10, 15, 20…). 1 linha: só os pontos.
+      var cmb = Math.floor(+res.combo) || 0, comboMile = cmb === 7 || cmb === 10 || (cmb > 10 && cmb % 5 === 0);
+      if (hypeOn() && !res.boardClear && (comboMile || (cmb < 2 && (tier >= 3 || (tier === 2 && Date.now() - hypeAt > 6000))))) { // v1.30: fala animada (combo 7+ vira "Imparável!"/"Lendário!" com o combo embaixo)
+        word = sayHype(MZHype.pick(tier, { combo: comboMile ? cmb : 0, streak: streak }), [1.15, mid], comboMile ? T('Combo ×{n}', { n: cmb }) + (res.comboBonus > 0 ? '  +' + fmt(Math.floor(+res.comboBonus) || 0) : '') : '');
+        hyped = comboMile; hypeAt = Date.now();
+      }
+      if (feverNow && !res.boardClear) { // a Febre é a mensagem grande desta jogada
+        if (window.MZHype) sayHype({ key: 'Febre!', voice: 'febre', tier: 4 }, [1.15, mid], T('Pontos ×2')); // v1.30 (dono: menos texto na tela)
+        else popup(T('Febre!'), [2.6, mid], 'praise t4', 0);
+        later(function () { Sound.hype(4); }, 80); hyped = true;
+      }
+      if (res.combo >= 2 && !res.boardClear && !hyped) { // combo em destaque: número grande + pontos extras do combo; combos altos ganham cor e confete
+        var cbCls = 'combo-big' + (res.combo >= 10 ? ' mega' : res.combo >= 5 ? ' hot' : ''), cbShow = true;
+        if (hypeOn()) { // v1.30 (dono: menos poluição): combo no mesmo estilo limpo das falas, no alto do tabuleiro
+          var ct = res.combo >= 5 ? 3 : 2;
+          cbShow = cmb === 3 || cmb === 5 || (tier >= 3 && Date.now() - hypeAt > 2500);
+          if (cbShow) { hypeAt = Date.now(); // v1.31: combo grande só no ×3, ×5 ou numa jogada forte (o contador do combo continua no alto)
+          popup(MZHype.build(document, T('Combo ×{n}', { n: Math.floor(+res.combo) || 0 }), ct, res.comboBonus > 0 ? '+' + fmt(Math.floor(+res.comboBonus) || 0) : ''), [1.15, mid], 'hype t' + ct + ' combo-hype', 0, false, 60); }
+        } else
         popup(T('Combo <b>{n}</b>', { n: Math.floor(+res.combo) || 0 }) + (res.comboBonus > 0 ? ' <small>+' + fmt(Math.floor(+res.comboBonus) || 0) + '</small>' : '')  /* v1.21.2: só números entram no HTML */, [2.6, mid], cbCls, 0, true, 60);
-        if (res.combo >= 5 && partsOn() && !res.boardClear && !zen) anims.push(Fx.confetti(evGame() ? ['#ff8a1f', '#9b4dff', '#ffb347', '#6a2fd1', '#2a1a3a'] : pal(th), geo, now + charge + 120, Math.min(70, 20 + res.combo * 4), anims));
+        if (cbShow && res.combo >= 5 && partsOn() && !res.boardClear && !zen) anims.push(Fx.confetti(natalGame() ? ['#e8243c', '#2fbf5a', '#ffd23f', '#ffffff', '#1f6b3d'] : evGame() ? ['#ff8a1f', '#9b4dff', '#ffb347', '#6a2fd1', '#2a1a3a'] : pal(th), geo, now + charge + 120, Math.min(70, 20 + res.combo * 4), anims));
         var rec4 = (state.recent || []).slice(-4), streak4 = rec4.length === 4 && rec4.every(function (v) { return v > 0; });
-        if (lvl === 'full' && settings.quality !== 'low' && !zen && (res.combo >= 5 || streak4)) // efeito temporário: faixas de cor atravessando os blocos
+        if (cbShow && lvl === 'full' && settings.quality !== 'low' && !zen && (res.combo >= 5 || streak4)) // efeito temporário: faixas de cor atravessando os blocos
           anims.push({ type: 'prism', cellsFn: function () { var o = []; if (!state) return o; for (var i = 0; i < state.board.length; i++) if (state.board[i] >= 0) o.push({ r: Math.floor(i / SIZE), c: i % SIZE }); return o; },
             start: now + charge + 200, dur: 1400, strong: res.combo >= 7 });
       }
       if (res.boardClear) { // recompensa especial: contorno brilhando, confete e bônus
         // v1.23: limpeza perfeita é a única mensagem grande da jogada (o bônus vai junto, pequeno)
-        popup(T('Limpeza perfeita!') + '<br><small>+' + fmt(Math.floor(+res.clearPts) || 0) + '</small>', [4.2, mid], 'big clear', 0, true, 200);
+        if (hypeOn()) sayHype(MZHype.pick(4, { boardClear: true }), [4.2, mid], '+' + fmt(Math.floor(+res.clearPts) || 0), 200, true);
+        else popup(T('Limpeza perfeita!') + '<br><small>+' + fmt(Math.floor(+res.clearPts) || 0) + '</small>', [4.2, mid], 'big clear', 0, true, 200);
         if (lvl !== 'off' && !zen) anims.push({ type: 'boardGlow', color: th.accent, start: now + charge, dur: 1300 });
         if (partsOn() && !zen) anims.push(Fx.confetti(pal(th), geo, now + charge, 80, anims));
         later(function () { Sound.boardClear(); }, 250);
@@ -1515,8 +1745,9 @@
     var recordNow = false;
     if ((state.mode === 'classic' || state.mode === 'daily') && !state.recordShown && state.startBest > 0 && state.score > state.startBest) {
       state.recordShown = true; recordNow = true;
-      popup(T('Novo recorde!'), [SIZE - 1.4, SIZE / 2 - 0.5], 'praise t4', 0, false, res.lineCount ? 750 : 0);
-      later(function () { haptic('celebrate'); }, res.lineCount ? 750 : 0);
+      if (hypeOn()) sayHype({ key: MZHype.SPECIAL.record.k, voice: MZHype.SPECIAL.record.v, tier: 4 }, [SIZE - 1.4, SIZE / 2 - 0.5], '', res.lineCount ? 750 : 0, true);
+      else popup(T('Novo recorde!'), [SIZE - 1.4, SIZE / 2 - 0.5], 'praise t4', 0, false, res.lineCount ? 750 : 0);
+      later(function () { haptic('celebrate'); mascot('wow', 1800); }, res.lineCount ? 750 : 0); // v1.30: Kabloquinho comemora o recorde
       if (lvl !== 'off') anims.push({ type: 'shine', start: now + 200, dur: 900 });
       if (partsOn()) anims.push(Fx.confetti(pal(th), geo, now + 200, 50, anims));
       later(function () { Sound.record(); }, 300);
@@ -1530,10 +1761,12 @@
         later(function () { toast('🎯 ' + T('Faltam {n} para o seu recorde!', { n: fmt(state.startBest - state.score) }), T('Continue assim!')); }, res.lineCount ? 900 : 200);
       }
     }
+    if (feverEnded) { announce(T('Fim da Febre.')); later(function () { Sound.comboLost(3); }, 300); }
     surpriseAfterMove(res, recordNow, prevCombo);
     if (prevCombo >= 2 && state.combo === 0 && state.mode !== 'tutorial') comboEnded(prevCombo);
     if (res.levelUp) { // subiu de nível: multiplicador maior (também no último passo do tutorial)
-      popup(T('Fase {n}!', { n: res.level }) + ' ×' + multText(res.level), [SIZE - 2.6, SIZE / 2 - 0.5], 'level', 0, false, res.lineCount ? 1050 : 0);
+      if (hypeOn()) popup(MZHype.build(document, T('Fase {n}!', { n: res.level }), 2, '×' + multText(res.level)), [SIZE - 2.6, SIZE / 2 - 0.5], 'hype t2 level-hype', 0, false, res.lineCount ? 1050 : 0); // v1.30: mesmo estilo limpo
+      else popup(T('Fase {n}!', { n: res.level }) + ' ×' + multText(res.level), [SIZE - 2.6, SIZE / 2 - 0.5], 'level', 0, false, res.lineCount ? 1050 : 0);
       later(function () { Sound.record(); var ch = $('#lvl-chip'); ch.classList.remove('up'); void ch.offsetWidth; ch.classList.add('up'); }, res.lineCount ? 1050 : 0);
       announce(T('Fase {n}, multiplicador ×{m}.', { n: res.level, m: multText(res.level) }));
     }
@@ -1562,6 +1795,123 @@
     return T(k);
   }
 
+  /* v1.30 (laboratório, chave hype): fala animada + voz gravada (se houver) ou "apresentador" sintetizado */
+  /* v1.30 (laboratório, chave mascote): Kabloquinho reage às jogadas */
+  /** v1.30: o mascote cabe no espaço entre a barra de fase e o tabuleiro (encolhe até 34 px); sem espaço, some. */
+  function placeMascot() {
+    var m = window.MZMascot && MZMascot.el; if (!m || m.hidden) return;
+    var tb = document.querySelector('#screen-game .theme-bar'), gbar = $('#goal-bar'); if (!tb) return;
+    var above = Math.max(tb.getBoundingClientRect().bottom, gbar && !gbar.hidden ? gbar.getBoundingClientRect().bottom : 0);
+    var gap = boardBox.getBoundingClientRect().top - above - 4, size = Math.min(52, gap + 6);
+    m.classList.toggle('kbq-nospace', size < 34); // sem espaço: some (nunca cobre o tabuleiro nem a barra)
+    if (size < 34) return;
+    m.style.width = m.style.height = size + 'px';
+    m.style.top = -(size - 6) + 'px';
+  }
+  /* v1.30 (laboratório, chave mascote): Kabloquinho também na tela inicial, em cima do Jogar, com um balão que puxa para a partida
+     (baú do dia esperando, sequência de dias, missões, evento, recorde). Toque nele para a próxima frase. */
+  var homeKbq = null, homeBub = null, homeBubT = 0, homeLines = [], homeLineI = 0;
+  /** v1.30 (laboratório, chave do acabamento): fundo com profundidade — bolhas de luz bem suaves na cor do visual, flutuando devagar. Some com Efeitos leves/mínimos, qualidade baixa e nos eventos (que têm o próprio fundo). */
+  function ambLayer(on) {
+    var lay = $('#amb-layer');
+    on = on && FLAGS.juice && settings.anim === 'full' && settings.quality !== 'low';
+    if (!lay) { if (!on) return; lay = el('div'); lay.id = 'amb-layer'; lay.setAttribute('aria-hidden', 'true'); for (var i = 1; i <= 7; i++) lay.appendChild(el('i', 'amb a' + i)); var appEl = $('#app'); appEl.parentNode.insertBefore(lay, appEl); } // entre o fundo (.bg-layer) e o jogo
+    lay.hidden = !on;
+  }
+  /** v1.30 (laboratório, chave do acabamento): atalhos no alto das Configurações (Som · Vibração · Visual · Jogo · Progresso · Idioma).
+      Tocar rola até a seção; a seção visível fica marcada. Nada é escondido (as opções continuam todas na mesma tela). */
+  function settingsJump() {
+    var card = $('#ov-settings .card'); if (!card) return;
+    var secs = Array.prototype.filter.call(card.querySelectorAll('h3.set-sec'), function (h) { return h.offsetParent; });
+    var bar = card.querySelector('.set-jump');
+    if (!bar) {
+      bar = el('nav', 'set-jump'); bar.setAttribute('aria-label', T('Seções das configurações'));
+      card.insertBefore(bar, $('#settings-title').nextSibling);
+      card.addEventListener('scroll', function () { markJump(); }, { passive: true });
+    }
+    bar.textContent = '';
+    secs.forEach(function (h, i) {
+      var parts = h.textContent.trim().split(' '), ic = parts.length > 1 ? parts.shift() : '', name = parts.join(' ');
+      var b = el('button', 'sj'); b.type = 'button'; b.appendChild(el('span', 'sj-ic', ic)); b.appendChild(el('span', '', name));
+      b.addEventListener('click', function () { Sound.tap(); card.scrollTo({ top: h.offsetTop - bar.offsetHeight - 10, behavior: settings.anim === 'off' ? 'auto' : 'smooth' }); });
+      bar.appendChild(b);
+    });
+    card.scrollTop = 0; markJump();
+    function markJump() {
+      var y = card.scrollTop + bar.offsetHeight + 24, cur = 0;
+      secs.forEach(function (h, i) { if (h.offsetTop <= y) cur = i; });
+      if (card.scrollTop + card.clientHeight >= card.scrollHeight - 4) cur = secs.length - 1;
+      Array.prototype.forEach.call(bar.children, function (b, i) { var was = b.classList.contains('on'); b.classList.toggle('on', i === cur); if (i === cur && !was) bar.scrollTo({ left: Math.max(0, b.offsetLeft - 24), behavior: 'smooth' }); });
+    }
+  }
+  var homeCheer = '';
+  function homeLinesNow() {
+    var out = homeCheer ? [homeCheer] : []; homeCheer = '';
+    var best = bestFor('classic'), sk = Season.streakNow(stats, today()), st = stats.streak || {}, left = (stats.missions || []).filter(function (m) { return !m.done; }).length;
+    if (stats.chestDay !== today()) out.push(T('Baú do dia te esperando! 🎁'));
+    if (sk >= 2 && st.last !== today()) out.push(T('{n} dias seguidos! Não perde hoje 🔥', { n: sk }));
+    if (eventNow()) out.push(T('Tem evento rolando! 🎉'));
+    if (left) out.push(left === 1 ? T('Falta 1 missão hoje') : T('Faltam {n} missões hoje', { n: left }));
+    if (best > 0) out.push(T('Bora passar dos {n} pontos?', { n: fmt(best) }));
+    out.push(T('Hoje é dia de recorde!'), T('Bora jogar?'));
+    return out;
+  }
+  function homeSay(i) {
+    if (!homeBub) return; clearTimeout(homeBubT);
+    homeBub.textContent = homeLines[i % homeLines.length]; homeBub.classList.remove('show'); void homeBub.offsetWidth; homeBub.classList.add('show');
+    homeBubT = setTimeout(function () { homeBub.classList.remove('show'); }, 4200);
+  }
+  var napT = 0;
+  function homeNap() { // v1.30: parado 25 s na tela inicial, o Kabloquinho cochila; qualquer toque acorda
+    clearTimeout(napT);
+    napT = setTimeout(function () { if (homeKbq && screenIs('home') && !overlayOpen()) homeKbq.base('sleep'); }, 25000);
+  }
+  document.addEventListener('pointerdown', function () { if (homeKbq && homeKbq.mood === 'sleep') { homeKbq.base('idle'); homeKbq.react('wow', 600); } if (homeKbq) homeNap(); }, true);
+  function homeMascot() {
+    if (!FLAGS.mascote || !window.MZMascot || !MZMascot.create) return;
+    var play = $('#btn-play'); if (!play) return;
+    if (!homeKbq) {
+      var wrap = el('div', 'play-wrap'); play.parentNode.insertBefore(wrap, play); wrap.appendChild(play);
+      homeKbq = MZMascot.create(); homeKbq.mount(wrap, function () { Sound.boop(); haptic('line'); homeSay(++homeLineI); });
+      homeKbq.el.classList.add('kbq-home'); homeKbq.el.setAttribute('aria-label', T('Kabloquinho: toque para ouvir uma dica'));
+      homeBub = el('div', 'kbq-bubble'); homeBub.setAttribute('role', 'status'); wrap.appendChild(homeBub);
+    }
+    homeKbq.show(settings.kbq !== false); if (settings.kbq === false) return;
+    homeLines = homeLinesNow(); homeLineI = 0; homeKbq.base('idle'); homeNap(); var hev = eventNow(); homeKbq.outfit(hev && hev.theme === 'natal' ? 'xmas' : '');
+    setTimeout(function () { if (screenIs('home') && !overlayOpen()) { homeKbq.react('happy', 900); homeSay(0); } }, 900);
+  }
+  function mascotOn() { return !!FLAGS.mascote && settings.kbq !== false && !!window.MZMascot && !!state && state.mode !== 'zen' && state.mode !== 'tutorial'; }
+  function mascot(m, ms) { if (mascotOn()) MZMascot.react(m, ms); }
+  function hypeOn() { return !!FLAGS.hype && !!window.MZHype; }
+  var hypeAt = 0, voiceAt = 0; // v1.31: última fala grande na tela / última voz (para não ficar chato)
+  /** v1.31: a voz só fala em jogada forte (3+ linhas) e no máximo a cada 8 s; momentos especiais (recorde, limpeza
+   *  perfeita, Imparável, Lendário, Febre) falam sempre. */
+  function voiceOk(pk, special) {
+    if (pk.tier < 3) return false;
+    var now = Date.now(); if (!special && now - voiceAt < 8000) return false;
+    voiceAt = now; return true;
+  }
+  function sayHype(pk, origin, sub, delayMs, quiet) { // quiet: a jogada já tem som próprio (limpeza perfeita, recorde) — só a voz gravada, se houver
+    popup(MZHype.build(document, T(pk.key), pk.tier, sub), origin, 'hype t' + pk.tier, 0, false, delayMs || 0);
+    var special = !!quiet || pk.voice === 'febre' || pk.voice === 'imparavel' || pk.voice === 'lendario';
+    later(function () {
+      var talk = voiceOk(pk, special);
+      var f = talk && settings.tts !== false ? MZHype.Voice.fileFor(MZI18n.lang, pk.voice) : null; // v1.31: a chave "Voz do apresentador" vale também para a voz gravada
+      if (f && Sound.voice(f)) return;
+      var spoke = talk && ttsOn() && MZHype.Speak.say(T(pk.key), MZI18n.lang, pk.tier, settings.sfxVol / 100); // v1.30: voz do próprio celular
+      if (pk.tier >= 2 && !quiet) Sound.hype(spoke ? Math.min(3, pk.tier) : pk.tier); // com voz, sem o "uau" sintetizado por cima
+    }, (delayMs || 0) + 60);
+    return T(pk.key);
+  }
+  /** v1.31: o apresentador fala uma frase solta: voz gravada se houver; senão, a voz do celular (se ligada). */
+  function shout(voice, key) {
+    if (!hypeOn() || settings.tts === false || !settings.sound) return false;
+    var f = MZHype.Voice.fileFor(MZI18n.lang, voice);
+    if (f && Sound.voice(f)) return true;
+    if (ttsOn()) { MZHype.Speak.lastAt = 0; return MZHype.Speak.say(T(key), MZI18n.lang, 4, settings.sfxVol / 100); }
+    return false;
+  }
+  function ttsOn() { return !!FLAGS.hype && settings.tts !== false && settings.sound && !!window.MZHype && MZHype.Speak.supported(); }
   function pal(th) { return curSkin() === 'theme' ? th.palette : Themes.classic(th).palette; }
 
   /* ---------------- transformações surpresa (decisão em js/surprise.js) ---------------- */
@@ -1587,7 +1937,8 @@
       return;
     }
     // 2) transformação dos blocos
-    var skinPool = evGame() && window.MZHalloweenArt ? Skins.ids.filter(function (id) { return window.MZHalloweenArt.keys.indexOf(id) !== -1; }) : Skins.ids; // v1.25 (dono): no modo Halloween só viram estilos que têm versão de Halloween
+    var skinPool = evArt() ? Skins.ids.filter(function (id) { return evArt().keys.indexOf(id) !== -1; }) : Skins.ids; // v1.25 (dono): no modo Halloween só viram estilos que têm versão de Halloween
+    if (Skins.prizeIds && Skins.prizeIds.length) skinPool = skinPool.filter(function (id) { return Skins.prizeIds.indexOf(id) === -1 || Progress.isUnlocked(stats, id); }); // v1.27: prêmio de nível só aparece depois de ganho
     var d = settings.surprise && settings.blocks === 'classic' ? Surprise.decide(look, res, Object.assign({ base: settings.blocks }, evCtx), skinPool, Math.random) : null;
     if (d) {
       look.since = 0; look.left = d.left;
@@ -1626,7 +1977,7 @@
     var discovered = false;
     if (skin) {
       stats.surprises = (stats.surprises || 0) + 1;
-      var seenKey = evGame() ? 'hw-' + skin : skin; // Halloween conta separado
+      var seenKey = evGame() ? (natalGame() ? 'xm-' : 'hw-') + skin : skin; // Halloween conta separado
       if (!stats.surpriseSeen[seenKey]) { stats.surpriseSeen[seenKey] = 1; discovered = true; } // v1.25.1 (dono): aviso só na 1ª vez que vê o estilo
       saveStats();
     }
@@ -1681,14 +2032,14 @@
   var bigUntil = 0; // v1.25: uma mensagem grande por vez — a próxima espera a anterior sumir
   function popup(text, origin, cls, dy, html, delayMs) {
     if (state && state.mode === 'zen') return; // v1.26 (dono): Zen 100% limpo — sem pontos voando, elogios nem combo
-    if (/(^|\s)(praise|combo-big|big|level)(\s|$)/.test(cls || '')) {
+    if (/(^|\s)(praise|hype|combo-big|big|level|legend-pw)(\s|$)/.test(cls || '')) {
       var nowMs = Date.now(), at = nowMs + (delayMs || 0);
       if (at < bigUntil) { if (bigUntil - nowMs > 3000) return; delayMs = bigUntil - nowMs; at = bigUntil; } // fila longa demais: pula
       bigUntil = at + (settings.anim === 'full' ? 1050 : 950);
     }
     var el = document.createElement('div');
     el.className = 'popup' + (cls ? ' ' + cls : '');
-    if (html) el.innerHTML = text; else el.textContent = text;
+    if (text && text.nodeType) el.appendChild(text); else if (html) el.innerHTML = text; else el.textContent = text; // v1.30: fala animada chega pronta (montada só com textContent)
     var x = L.pad + (origin[1] + 0.5) * L.cell, y = L.pad + (origin[0] + 0.5 + (dy || 0)) * L.cell;
     x = Math.max(70, Math.min(L.size - 70, x));
     y = Math.max(24, Math.min(L.size - 24, y));
@@ -1696,11 +2047,31 @@
     if (dy) el.style.animationDelay = '0.08s';
     if (delayMs) { el.style.animationDelay = (delayMs / 1000) + 's'; el.style.opacity = '0'; el.style.animationFillMode = 'forwards'; }
     fx.appendChild(el);
-    el.addEventListener('animationend', function () { el.remove(); });
-    setTimeout(function () { el.remove(); }, 1700 + (delayMs || 0));
+    el.addEventListener('animationend', function (e) { if (e.target === el) el.remove(); }); // v1.30: animação das letras (filhas) não apaga a fala
+    setTimeout(function () { el.remove(); }, 1900 + (delayMs || 0));
   }
 
+  /** v1.30 (laboratório, chave juice): os pontos da jogada voam do tabuleiro até o placar, que dá um pulinho ao receber. */
+  function flyToScore(text, cell, delayMs) {
+    var sc = $('#score'), cv = $('#board'); if (!sc || !cv || !cv.animate) return;
+    var br = cv.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+    var x0 = br.left + (L.pad + (cell[1] + 0.5) * L.cell) * (br.width / L.size), y0 = br.top + (L.pad + (cell[0] + 0.5) * L.cell) * (br.height / L.size);
+    var x1 = sr.left + sr.width / 2, y1 = sr.top + sr.height / 2;
+    var el = document.createElement('div'); el.className = 'fly-pts'; el.textContent = text; el.setAttribute('aria-hidden', 'true');
+    el.style.left = x0 + 'px'; el.style.top = y0 + 'px'; document.body.appendChild(el);
+    var dx = x1 - x0, dy = y1 - y0;
+    var a = el.animate([
+      { transform: 'translate(-50%,-50%) scale(.6)', opacity: 0 },
+      { transform: 'translate(-50%,-50%) translate(' + (dx * 0.08) + 'px,' + (-30) + 'px) scale(1.15)', opacity: 1, offset: 0.25 },
+      { transform: 'translate(-50%,-50%) translate(' + (dx * 0.55) + 'px,' + (dy * 0.45 - 40) + 'px) scale(.95)', opacity: 1, offset: 0.6 },
+      { transform: 'translate(-50%,-50%) translate(' + dx + 'px,' + dy + 'px) scale(.45)', opacity: 0.2 }
+    ], { duration: 720, delay: delayMs || 0, easing: 'cubic-bezier(.45,0,.55,1)', fill: 'both' });
+    a.onfinish = function () { el.remove(); sc.classList.remove('catch'); void sc.offsetWidth; sc.classList.add('catch'); };
+    setTimeout(function () { el.remove(); }, 1600 + (delayMs || 0));
+  }
+  var scoreHoldUntil = 0;
   function updateScore() {
+    var hold = scoreHoldUntil - Date.now(); if (hold > 0) { scoreHoldUntil = 0; later(updateScore, hold); return; } // v1.30: espera os pontos voando chegarem
     var el = $('#score'), target = state.score;
     el.parentNode.classList.toggle('long', target >= 1000000); // 7+ dígitos: fonte um pouco menor
     if (settings.anim === 'off' || target < displayedScore) {
@@ -1723,6 +2094,8 @@
     var chip = $('#combo-chip');
     $('#combo-x').textContent = '×' + n;
     chip.hidden = false; chip.classList.remove('hot', 'ended'); void chip.offsetWidth; chip.classList.add('ended');
+    if (FLAGS.juice && n >= 3) Sound.comboLost(n); // v1.30: combo grande acabou — som curto e baixinho
+    mascot('sad', 1300);
     announce(T('Fim do combo ×{n}', { n: n }));
     later(function () { chip.classList.remove('ended'); updateComboChip(); }, settings.anim === 'off' ? 0 : 900);
   }
@@ -1731,13 +2104,14 @@
   function updateBoardMood() {
     var b = $('#board'); if (!b) return;
     var on = !!state && screenIs('game') && modeOf() !== 'tutorial' && !state.over, k = on && modeOf() !== 'zen' ? state.combo || 0 : 0; // v1.25: Zen sem moldura
+    if (FLAGS.juice) Sound.setHeat(k >= 7 ? 2 : k >= 3 ? 1 : 0); // v1.30: trilha esquenta com o combo
     // v1.25: moldura de combo em 5 níveis (×2 brilho leve, ×3 faíscas, ×5 moldura visível, ×7 ondas, ×10 fogo), na cor do visual
     b.classList.toggle('combo-a', k === 2); b.classList.toggle('combo-b', k >= 3 && k < 5); b.classList.toggle('combo-c', k >= 5 && k < 7);
     b.classList.toggle('combo-d', k >= 7 && k < 10); b.classList.toggle('combo-e', k >= 10);
     var leftC = on ? Logic.CONFIG.combo.window - (state.movesSinceClear || 0) : 9;
     b.classList.toggle('fading', k >= 2 && leftC <= 1); // falta 1 peça: a moldura apaga devagar
-    b.style.setProperty('--frame-rgb', evGame() ? '255,122,26' : hexRgb(boardTheme().accent)); // v1.25: no evento a moldura é laranja e roxa (assombrada)
-    b.classList.toggle('haunt', evGame());
+    b.style.setProperty('--frame-rgb', natalGame() ? '232,36,60' : evGame() ? '255,122,26' : hexRgb(boardTheme().accent)); // v1.25: no evento a moldura é laranja e roxa (assombrada)
+    b.classList.toggle('haunt', terrorGame()); b.classList.toggle('xmas', natalGame());
     var danger = false;
     if (on) {
       var left = state.pieces.filter(function (p) { return !!p; }).length, fit = 0, filled = 0;
@@ -1745,21 +2119,38 @@
       state.board.forEach(function (v) { if (v >= 0) filled++; });
       danger = (left >= 2 && fit <= 1) || filled >= SIZE * SIZE * 0.75;
     }
+    if (FLAGS.juice) heartbeat(on && danger && modeOf() !== 'zen'); // v1.30: batimento baixinho com o tabuleiro quase cheio
     if (danger && !b.classList.contains('danger')) announce(T('Cuidado: quase sem espaço.'));
     b.classList.toggle('danger', danger);
-    b.classList.toggle('on-fire', on && !danger && k >= 10 && settings.anim !== 'off'); // v1.24: fogo no combo ×10
+    var fev = on && (state.fever | 0) > 0; // v1.30: Febre acende o fogo da moldura e a trilha no máximo
+    b.classList.toggle('on-fire', on && !danger && (k >= 10 || fev) && settings.anim !== 'off'); // v1.24: fogo no combo ×10
+    if (fev) Sound.setHeat(2);
+    if (FLAGS.juice) document.body.setAttribute('data-heat', !on ? '0' : fev ? '2' : k >= 3 ? '1' : '0'); // v1.30: as luzes do fundo esquentam com o combo e a Febre
+    if (mascotOn()) MZMascot.base(fev ? 'fire' : danger ? 'sweat' : 'idle'); // v1.30: humor de fundo do mascote
+  }
+  var hbTimer = 0;
+  function heartbeat(onNow) {
+    if (onNow && !hbTimer) { Sound.heartbeat(); hbTimer = setInterval(function () { if (!state || state.over || !screenIs('game') || document.hidden) { clearInterval(hbTimer); hbTimer = 0; return; } Sound.heartbeat(); }, 1100); }
+    else if (!onNow && hbTimer) { clearInterval(hbTimer); hbTimer = 0; }
   }
   function hexRgb(h) { var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(h || ''); return m ? parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) : '242,201,76'; }
   function updateComboChip() {
     updateBoardMood();
     var chip = $('#combo-chip'), win = Logic.CONFIG.combo.window;
-    var active = state && state.combo >= 1;
+    var fev = !!state && (state.fever | 0) > 0 && state.mode !== 'zen'; // v1.30 (dono: menos poluição): a Febre usa o próprio chip do combo, sem chip extra
+    var active = state && (state.combo >= 1 || fev);
     chip.hidden = !active;
+    chip.classList.toggle('fever', fev);
     if (!active) return;
-    $('#combo-x').textContent = '×' + Math.max(1, state.combo);
-    var left = win - state.movesSinceClear;
+    $('#combo-x').textContent = fev ? '🔥×2' : '×' + Math.max(1, state.combo);
+    var left = fev ? (state.fever | 0) : win - state.movesSinceClear;
     Array.prototype.forEach.call(chip.querySelectorAll('i'), function (d, i) { d.classList.toggle('on', i < left); });
     chip.classList.toggle('hot', state.combo >= 2);
+    if (FLAGS.juice) { // v1.30: última chance do combo — bolinha pisca vermelha e um tique avisa (só ao entrar nesse estado)
+      var last = !fev && state.combo >= 2 && left === 1 && state.mode !== 'zen';
+      if (last && !chip.classList.contains('last')) { Sound.tick(0.15); later(function () { Sound.tick(0.15); }, 110); announce(T('Última chance de manter o combo!')); }
+      chip.classList.toggle('last', last);
+    }
     chip.style.setProperty('--k', Math.min(1.45, 1 + 0.05 * Math.max(0, state.combo - 1)).toFixed(2)); // cresce com o combo
   }
 
@@ -1911,9 +2302,45 @@
   // v1.24: Temporada 1 — recordes zeram; o recorde antigo fica guardado como "lendário" (js/season.js)
   var seasonNews = null;
   var forcedEvent = /[?&]debug\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? (/[?&]event=([a-z]+)/.exec(location.search) || [])[1] : null;
-  function evGoal() { var ev = eventNow(); return !ev ? 40 : state && state.nightmare ? ev.nightmare.goal : ev.goal; } // v1.25: meta do desafio (normal ou Pesadelo)
-  function evFlee() { var ev = eventNow(); return !ev ? 6 : state && state.nightmare ? ev.nightmare.flee : ev.flee; }
-  function evGame() { return !!(state && state.mode === 'event' && eventNow()); } // v1.25: conteúdo do evento só dentro do modo Evento
+  function evTier() { var ev = eventNow(); return !ev || !state ? null : state.tier === 3 && ev.storm ? ev.storm : state.nightmare ? ev.nightmare : ev; } // v1.29: regras do nível (Desafio / Noite Feliz-Pesadelo / Nevasca)
+  function evGoal() { var t = evTier(); return t ? t.goal : 40; } // v1.25: meta do desafio
+  function evFlee() { var t = evTier(); return t ? t.flee : 6; }
+  /** v1.29 (Nevasca): bola de neve cai numa casa vazia. Nunca fecha linha sozinha e nunca deixa o jogador sem jogada (justo). */
+  function dropSnowball(now, lvl) {
+    var free = []; state.board.forEach(function (v, k) { if (v < 0) free.push(k); });
+    for (var tries = 0; tries < 12 && free.length; tries++) {
+      var j = Math.floor(Math.random() * free.length), k = free[j]; free.splice(j, 1);
+      state.board[k] = 6; var fl = Logic.findFullLines(state.board);
+      if (fl.rows.length || fl.cols.length || !Logic.hasAnyMove(state)) { state.board[k] = -1; continue; }
+      state.rare = state.rare || {}; state.rare[k] = 'sn';
+      if (lvl !== 'off') anims.push({ type: 'snowDrop', r: Math.floor(k / SIZE), c: k % SIZE, start: now + 250, dur: 600 });
+      later(function () { Sound.poof && Sound.poof(); }, 250); announce(T('Caiu uma bola de neve!'));
+      return true;
+    }
+    return false;
+  }
+  function isEvItem(t) { return t === 'pk' || t === 'pg'; } // v1.29: item do desafio (pg = presente dourado, vale 3)
+  function itemFlee(t) { return t === 'pg' ? Math.max(2, evFlee() - 2) : evFlee(); }
+  function evGame() { return !!(state && state.mode === 'event' && eventNow()); }
+  function evTheme() { var e = eventNow(); return (e && e.theme) || 'terror'; } // v1.28: 'terror' (Halloween) ou 'natal'
+  function terrorGame() { return evGame() && evTheme() === 'terror'; } // arte/efeitos assombrados só no Halloween
+  function natalGame() { return evGame() && evTheme() === 'natal'; }
+  function natalOn() { return !!eventNow() && evTheme() === 'natal'; } // v1.29: Natal valendo (data ou prévia do laboratório) — árvore e Advento contam em qualquer modo
+  var natalPreview = false, fwPreview = false;
+  function adventDay() { return natalPreview && !MZNatal.inDecember(today()) ? '2026-12-25' : today(); }
+  function openAdvent(n) { // v1.29: Calendário do Advento — abre a porta e entrega o prêmio
+    var r = MZNatal.openDoor(stats, n, adventDay(), natalPreview); if (!r) return null;
+    var parts = [], hk;
+    if (r.xp) { gainXp(r.xp); parts.push('+' + r.xp + ' XP'); }
+    for (var i = 0; i < r.helpers; i++) { if (FLAGS.helpers) { hk = giveHelper(); parts.push('+1 ' + HELP[hk].icon + ' ' + T(HELP[hk].name)); } else { gainXp(50); parts.push('+50 XP'); } }
+    if (r.badge) parts.push('🏅 ' + T(r.badge));
+    saveStats(); var fresh = Progress.checkAchievements(stats, today()); if (fresh.length) saveStats();
+    Sound.jingle(); toast(T('Porta {n} aberta! 🎁', { n: r.day }), parts.join(' · '), 'trophy');
+    fresh.forEach(function (a) { reward('trophy', T('Conquista: {name}', { name: a.name }), a.desc); });
+    return r;
+  }
+  function evPrize() { var e = eventNow(); return (e && e.prize) || 'pk'; } // chave do prêmio em stats.rares
+  var EV_FX = { terror: ['#ff8a1f', '#9b4dff', '#ffb347', '#6a2fd1'], natal: ['#e8243c', '#2fbf5a', '#ffd23f', '#ffffff'] }; // v1.25: conteúdo do evento só dentro do modo Evento
   function eventNow() { return Events.current(today(), forcedEvent); } // v1.24: evento por data (Semana do Terror)
   (function startSeason() {
     var r = Season.startSeason(stats);
@@ -1924,6 +2351,9 @@
     store.set('gb.stats', stats);
     if (r.started) seasonNews = r;
   })();
+  // v1.31: quem já tinha feito os pontos antes das medalhas lendárias chegarem ao site ganha as medalhas agora (recorde da temporada ou o antigo)
+  var lateLegends = [];
+  try { if (FLAGS.legends && window.MZLegend) lateLegends = Season.unlockLegends(stats, Math.max((stats.best && stats.best.classic) || 0, (stats.legend && stats.legend.classic) || 0)); } catch (e) {}
   try { Progress.ensureMissions(stats, today()); } catch (e) { stats = Progress.newStats(); Progress.ensureMissions(stats, today()); }
   if (!Progress.isUnlocked(stats, settings.blocks)) settings.blocks = 'classic';
   saveStats();
@@ -1968,6 +2398,23 @@
     if (r.reward) { gainXp(r.reward); reward('trophy', T('🔥 {n} dias seguidos!', { n: r.days }), T('Prêmio da sequência: +{x} XP', { x: r.reward })); }
     else if (r.usedShield) reward('mission', T('🛡️ Escudo usado'), T('Você pulou um dia, mas a sequência de {n} dias foi salva.', { n: r.days }));
     else if (r.days > 1) reward('mission', T('🔥 {n} dias seguidos!', { n: r.days }), T('Volte amanhã para continuar.'));
+  }
+  /** v1.30 (laboratório, chave do acabamento): tocar no 🔥 da tela inicial mostra a trilha de 7 dias — o 7º dia tem presente (+150 XP, regra que já existia). */
+  function openStreak() {
+    var st = stats.streak || {}, sk = Season.streakNow(stats, today()), playedToday = st.last === today();
+    var p = sk % 7; if (sk > 0 && p === 0) p = 7; if (!playedToday && p === 7) p = 0; // semana completa e ainda não jogou hoje: começa trilha nova
+    showDialog({ title: T('Sequência de dias'), sub: sk ? T('{n} dias seguidos', { n: sk }) : T('Jogue hoje para começar'), buttons: [{ label: T('Jogar'), cls: 'primary', fn: function () { closeDialog(); $('#btn-play').click(); } }, { label: T('Fechar'), fn: closeDialog }] });
+    var row = el('div', 'streak-track');
+    for (var d = 1; d <= 7; d++) {
+      var done = d <= p, isToday = playedToday ? d === p : d === p + 1;
+      var bx = el('div', 'sd' + (done ? ' done' : '') + (isToday ? ' today' : '') + (d === 7 ? ' gift' : ''));
+      bx.appendChild(el('span', 'sd-ic', d === 7 ? '🎁' : done ? '🔥' : '·'));
+      bx.appendChild(el('small', '', isToday ? T('Hoje') : T('Dia {n}', { n: d })));
+      row.appendChild(bx);
+    }
+    var info = el('p', 'streak-info', T('No 7º dia: +150 XP.') + ' ' + ((st.shields | 0) > 0 ? T('🛡️ Escudo da semana pronto: se pular um dia, ele salva a sequência.') : T('🛡️ Escudo da semana já usado.')) + (st.best > 1 ? ' ' + T('Melhor sequência: {n} dias.', { n: st.best }) : ''));
+    var card = $('#dialog-card'), stack = card.querySelector('.stack');
+    card.insertBefore(row, stack); card.insertBefore(info, stack);
   }
   function reportAchievements() {
     Progress.checkAchievements(stats, today()).forEach(function (a) { reward('trophy', T('Conquista: {name}', { name: a.name }), a.desc); });
@@ -2025,6 +2472,7 @@
   function saveGame() {
     if (wiping || !state || state.mode === 'tutorial') return;
     if (state.mode === 'zen' || (!state.over && !locked)) store.set(saveKey(modeOf()), state); // Zen nunca termina
+    if (state.mode !== 'zen') { if (lastSnap && !state.over) store.set(saveKey(modeOf()) + '.undo', lastSnap); else store.del(saveKey(modeOf()) + '.undo'); } // v1.27: desfazer não some ao recarregar
   }
   function loadSaved(mode) {
     var s = store.get(saveKey(mode), null);
@@ -2091,18 +2539,23 @@
       state.startBest = bestFor(mode);
       saveStats();
     }
+    if (saved && mode !== 'zen') { // v1.27: recupera o desfazer guardado (só se for desta mesma partida e uma jogada atrás)
+      try { var us = store.get(saveKey(mode) + '.undo', null), up = typeof us === 'string' ? JSON.parse(us) : null;
+        if (up && Logic.isValidState(up) && up.seed === saved.seed && up.placed === saved.placed - 1) lastSnap = us; } catch (e) {}
+    }
     if (typeof state.undoLeft !== 'number') state.undoLeft = mode === 'daily' || mode === 'weekly' ? 0 : 1;
     if (typeof state.startBest !== 'number') state.startBest = bestFor(mode);
-    if (!state.themeId) state.themeId = THEMES[0].id; // toda partida nova começa no visual Clássico
+    if (!state.themeId) state.themeId = startLookId(); // toda partida nova começa no visual Clássico (v1.27, laboratório: ou no visual inicial escolhido na Galeria)
     themeIdx = Themes.indexOfId(state.themeId);
     applyTheme(themeIdx, false);
-    if (state.rare && typeof state.rare === 'object') Object.keys(state.rare).forEach(function (k) { var i = +k; if (!(Number.isInteger(i) && i >= 0 && i < SIZE * SIZE) || !(/^(r[1-3]|pk)$/.test(state.rare[k]) || (Season.legendOf(state.rare[k]) && state.mode === 'classic')) || (state.rare[k] === 'pk' && state.mode !== 'event')) delete state.rare[k]; }); else delete state.rare; // v1.25: gaiola do morcego só no modo Evento (partidas salvas antigas perdem a abóbora/gaiola)
-    state.pieces.forEach(function (p) { if (p && p.rk && (!((/^(r[1-3]|pk)$/.test(p.rk.t) || (Season.legendOf(p.rk.t) && state.mode === 'classic')) && SHAPES[p.s].cells[p.rk.k]) || (p.rk.t === 'pk' && state.mode !== 'event'))) delete p.rk; });
+    if (state.rare && typeof state.rare === 'object') Object.keys(state.rare).forEach(function (k) { var i = +k; if (!(Number.isInteger(i) && i >= 0 && i < SIZE * SIZE) || !(/^(r[1-3]|pk|pg|sn)$/.test(state.rare[k]) || false) || ((isEvItem(state.rare[k]) || state.rare[k] === 'sn') && state.mode !== 'event')) delete state.rare[k]; }); else delete state.rare; // v1.25: gaiola do morcego só no modo Evento (partidas salvas antigas perdem a abóbora/gaiola)
+    state.pieces.forEach(function (p) { if (p && p.rk && (!((/^(r[1-3]|pk|pg|sn)$/.test(p.rk.t) || false) && SHAPES[p.s].cells[p.rk.k]) || ((isEvItem(p.rk.t) || p.rk.t === 'sn') && state.mode !== 'event'))) delete p.rk; });
     tagRares();
     displayedScore = state.score;
     $('#score').textContent = fmt(state.score);
     updateComboChip();
     show('game');
+    if (FLAGS.mascote && window.MZMascot) { MZMascot.mount(boardBox, function () { Sound.boop(); haptic('line'); }); MZMascot.show(mascotOn()); MZMascot.base('idle'); MZMascot.outfit(natalGame() ? 'xmas' : ''); placeMascot(); }
     updateHud();
     playClock = Date.now();
     saveGame();
@@ -2110,7 +2563,11 @@
     if (saved && mode === 'zen' && (state.over || !Logic.hasAnyMove(state))) { state.over = true; locked = true; later(showGameOver, 300); }
   }
 
-  function enterBoard() { boardBox.classList.remove('enter'); void boardBox.offsetWidth; boardBox.classList.add('enter'); }
+  function enterBoard() {
+    if (hypeOn() && MZHype.Voice.list && Sound.voicePreload) Sound.voicePreload(MZHype.Voice.list.filter(function (f) { return f.indexOf(MZI18n.lang === 'pt' ? 'pt_' : 'en_') === 0; })); // v1.31: vozes gravadas prontas antes da 1ª fala
+    boardBox.classList.remove('enter'); void boardBox.offsetWidth; boardBox.classList.add('enter');
+    if (FLAGS.juice && settings.anim === 'full') { anims.push({ type: 'cascade', start: animNow() + 120, dur: 760 }); requestRender(); } // v1.30: casas entram em onda, da quina de cima
+  }
 
   /* ---------------- painel de cima: recorde/objetivo/desfazer ---------------- */
   /** Multiplicador do nível em texto curto: ×1,35 · ×3,3 · ×15 · ×67. */
@@ -2141,7 +2598,7 @@
     else if (m === 'daily') { label = T('Melhor de hoje'); val = fmt(Math.max(bestFor(m), state.score)); }
     else if (m === 'weekly') { label = T('Melhor da semana'); val = fmt(Math.max(bestFor(m), state.score)); }
     else if (m === 'challenge') { label = T('Desafio'); val = T(challengeDef(state.chId).name); }
-    else if (m === 'event') { label = T('Evento'); val = T('Semana do Terror'); }
+    else if (m === 'event') { label = T('Evento'); val = natalGame() ? T('Natal') : T('Semana do Terror'); }
     else { val = T('Tutorial'); }
     $('#best-label').textContent = label;
     $('#best').textContent = val;
@@ -2156,7 +2613,7 @@
     $('#undo-count').hidden = u.disabled; // v1.16 (QA): sem jogada para desfazer (ex.: após reabrir), o contador some
     u.setAttribute('aria-label', zenOn() ? T('Desfazer (à vontade no Zen)') : T('Desfazer última jogada ({n} restante)', { n: Math.max(0, state.undoLeft) }));
 
-    var gb = $('#goal-bar');
+    var gb = $('#goal-bar'); gb.classList.remove('mission', 'mission-done');
     if (m === 'challenge') {
       var def = challengeDef(state.chId), st = Progress.challengeStatus(def, state);
       gb.hidden = false;
@@ -2173,12 +2630,24 @@
       $('#goal-text').textContent = '🪵 ' + T('Primeira medalha');
       $('#goal-progress').style.width = Math.min(100, state.score / 50).toFixed(1) + '%';
       $('#goal-extra').textContent = T('Faça {n} pontos', { n: fmt(5000) });
+    } else if (m === 'classic' && FLAGS.juice && missionForBar()) { // v1.30 (chave juice): a missão do dia mais perto de acabar, escolhida no começo da partida
+      var mb = missionForBar(), md = Progress.missionDef(mb.id), money = md.stat === 'gameScore';
+      gb.hidden = false;
+      $('#goal-text').textContent = '🎯 ' + T(md.text);
+      $('#goal-progress').style.width = (100 * Math.min(1, mb.cur / md.target)).toFixed(1) + '%';
+      $('#goal-extra').textContent = mb.done ? T('Missão completa! ⭐') : (money ? fmt(mb.cur) + '/' + fmt(md.target) : mb.cur + '/' + md.target);
+      gb.classList.toggle('mission-done', !!mb.done); gb.classList.add('mission');
+      if (mb.done && !state.misCel) { // v1.30: a missão acabou de ser cumprida nesta partida — festa curtinha na barra
+        state.misCel = true; gb.classList.remove('mis-pop'); void gb.offsetWidth; gb.classList.add('mis-pop');
+        later(function () { Sound.star(); haptic('line'); }, 250); announce(T('Missão completa! ⭐'));
+      }
     } else if (m === 'event') { // v1.24: Semana do Terror
       var goal = evGoal(), got = Math.min(goal, state.pk || 0);
       gb.hidden = false;
-      $('#goal-text').textContent = state.nightmare ? '👹 ' + T('Pesadelo') : '🎃 ' + T('Desafio do evento');
+      var xm = natalGame();
+      $('#goal-text').textContent = state.nightmare ? (xm ? (state.tier === 3 ? '❄️ ' + T('Nevasca') : '🌟 ' + T('Noite Feliz')) : '👹 ' + T('Pesadelo')) : (xm ? '🎄 ' : '🎃 ') + T('Desafio do evento');
       $('#goal-progress').style.width = (100 * got / goal).toFixed(1) + '%';
-      $('#goal-extra').textContent = state.pkDone ? T('Concluído!') : T('{a}/{b} morcegos', { a: got, b: goal });
+      $('#goal-extra').textContent = state.pkDone ? T('Concluído!') : (xm ? T('{a}/{b} presentes', { a: got, b: goal }) : T('{a}/{b} morcegos', { a: got, b: goal }));
     } else if (m === 'weekly') { // v1.24: posição no placar da galera
       gb.hidden = false;
       var gl = galera().list.filter(function (x) { return !x.me; }), ahead = gl.filter(function (x) { return x.score > state.score; }).sort(function (a, b) { return a.score - b.score; })[0];
@@ -2188,6 +2657,28 @@
     } else gb.hidden = true;
   }
 
+  /** v1.30: missão mostrada na barra durante o Clássico. Escolhida uma vez por partida (a barra não aparece/some no meio, e o tabuleiro não muda de tamanho). */
+  var BAR_STATS = { lines: 1, placed: 1, combo: 1, multi2: 1, gameScore: 1 };
+  function missionForBar() {
+    if (!state) return null;
+    if (state.misId === undefined) {
+      Progress.ensureMissions(stats, today());
+      var best = null;
+      (stats.missions || []).forEach(function (mm) {
+        var d = Progress.missionDef(mm.id); if (!d || mm.done || !BAR_STATS[d.stat]) return;
+        var k = (d.stat === 'gameScore' || d.stat === 'combo' ? 0 : mm.cur) / d.target, pref = { lines: 5, placed: 4, combo: 3, multi2: 2, gameScore: 1 }[d.stat]; // empate: a mais fácil de ver andando
+        if (!best || k > best.k || (k === best.k && pref > best.pref)) best = { id: mm.id, k: k, pref: pref };
+      });
+      state.misId = best ? best.id : '';
+    }
+    if (!state.misId) return null;
+    var mm2 = (stats.missions || []).filter(function (x) { return x.id === state.misId; })[0];
+    if (!mm2) return null;
+    var d2 = Progress.missionDef(mm2.id);
+    if (d2.stat === 'gameScore' && !mm2.done) return { id: mm2.id, cur: Math.min(d2.target, state.score), done: false }; // pontos desta partida
+    if (d2.stat === 'combo' && !mm2.done) return { id: mm2.id, cur: Math.min(d2.target, state.maxCombo || 0), done: false };
+    return mm2;
+  }
   /* ---------------- depois de cada jogada ---------------- */
   function afterMove(res) {
     var m = modeOf();
@@ -2246,8 +2737,12 @@
 
   function showGameOver() {
     var m = modeOf(), score = state.score;
+    Sound.setHeat(0); // v1.30
+    mascot(score > 0 && score >= bestFor(m) ? 'wow' : 'sad', 4000); // v1.30: no recorde ele comemora em vez de ficar triste
+    prepShareKbq(score > 0 && score >= bestFor(m) ? 'wow' : 'happy');
+    if (score > 0 && score >= bestFor(m) && m !== 'tutorial') homeCheer = T('Que recorde! 🏆'); // v1.30: o Kabloquinho comenta na tela inicial
     Sound.gameover();
-    if (evGame()) later(function () { Sound.howl(); }, 500); // v1.24: uivo no fim de partida (evento)
+    if (natalGame()) later(function () { Sound.jingleSong(); }, 500); else if (evGame()) later(function () { Sound.howl(); }, 500); // v1.24: uivo no fim de partida (evento)
     haptic('gameover');
     if (m === 'zen') {
       showResult({
@@ -2285,13 +2780,31 @@
       announce(T('Fim de partida. {n} pontos.', { n: score }));
       return;
     }
+    if (natalGame()) { // v1.29: fim da partida de Natal — quantos presentes, quanto faltou, recorde do nível
+      var tN = state.tier === 3 ? 3 : state.nightmare ? 2 : 1, gN = evGoal(), got = Math.min(gN, state.pk || 0), bN = ((stats.events.natal2026 || {}).best || {})[tN] || 0;
+      var nameN = [T('Desafio de Natal'), T('Noite Feliz'), T('Nevasca')][tN - 1];
+      showResult({
+        title: nameN, badge: state.pkDone ? T('Concluído!') : got >= bN && got > 0 ? T('Seu melhor neste nível!') : '', big: '🎁 ' + got + '/' + gN,
+        sub: state.pkDone ? T('Você conseguiu! O prêmio fica guardado para sempre.') : gN - got <= 10 ? T('Faltaram só {n} presentes! Dá para conseguir.', { n: gN - got }) : T('Seu recorde neste nível: {b} de {n}.', { b: bN, n: gN }),
+        xp: state.xpRes,
+        stats: [[String(got), T('presentes')], [fmt(score), T('pontos')], [String(bN), T('recorde')]],
+        buttons: [
+          { label: T('Tentar de novo'), cls: 'primary big', fn: function () { startNatal(tN); } },
+          { label: T('Escolher nível'), fn: function () { closeOverlay('#ov-over'); openEvent(); } },
+          { label: T('Tela inicial'), cls: 'ghost-dark', fn: goHome }
+        ]
+      });
+      announce(T('Fim de partida. {n} presentes.', { n: got }));
+      return;
+    }
     var isDaily = m === 'daily';
     var piecesOut = isDaily && state.placed >= Progress.DAILY_PIECES;
+    var nearMiss = !!FLAGS.juice && !record && !isDaily && state.startBest > 0 && score >= state.startBest * 0.85 && score < state.startBest; // v1.30: "quase!" puxa mais uma partida
     showResult({
       title: isDaily ? (piecesOut ? T('Desafio do dia concluído') : T('Sem mais encaixes')) : T('Sem mais encaixes'),
-      badge: record ? (isDaily ? T('Melhor resultado de hoje!') : T('Novo recorde!')) : '',
-      big: fmt(score), countUp: score, record: record,
-      sub: (isDaily ? T('Melhor de hoje: {n}', { n: fmt(bestFor(m)) }) : T('Recorde: {n}', { n: fmt(bestFor(m)) })) +
+      badge: record ? (isDaily ? T('Melhor resultado de hoje!') : T('Novo recorde!')) : nearMiss ? T('Quase!') : '',
+      big: fmt(score), countUp: score, record: record, prevBest: state.startBest, near: nearMiss,
+      sub: nearMiss ? T('Faltaram só {n} para o seu recorde! 😱', { n: fmt(state.startBest - score) }) : (isDaily ? T('Melhor de hoje: {n}', { n: fmt(bestFor(m)) }) : T('Recorde: {n}', { n: fmt(bestFor(m)) })) +
         (record && state.startBest > 0 ? ' · ' + T('+{n} acima do recorde anterior', { n: fmt(score - state.startBest) }) : ''),
       medal: Season.medalFor(score), nextMedal: Season.nextMedal(score), score: score, xp: state.xpRes,
       stats: [[fmt(state.lines), T('linhas')], [comboText(state.maxCombo), T('maior combo')], [isDaily ? state.placed + '/' + Progress.DAILY_PIECES : String(Logic.levelFor(state.lines)), isDaily ? T('peças') : T('fase')]],
@@ -2382,7 +2895,8 @@
       var ch = el('div', 'chest-row' + (state.chest.big ? ' big' : ''));
       ch.appendChild(el('span', 'chest-ic', '🎁')); ch.appendChild(el('strong', '', T('Baú do dia: +{n} XP', { n: fmt(state.chest.xp) })));
       ch.appendChild(el('small', '', state.chest.big ? T('Prêmio grande! Volte amanhã para outro baú.') : T('Volte amanhã para outro baú.')));
-      card.appendChild(ch); later(function () { Sound.record(); }, 600);
+      card.appendChild(ch);
+      if (FLAGS.juice) chestShow(ch, state.chest); else later(function () { Sound.record(); }, 600);
     }
     if (o.list) { var ul = el('ul', 'rules'); o.list.forEach(function (t) { ul.appendChild(el('li', '', t)); }); card.appendChild(ul); }
     if (o.stats) {
@@ -2398,6 +2912,30 @@
     });
     card.appendChild(stack);
   }
+  /** v1.30 (laboratório, chave do acabamento): baú fechado que treme; ao tocar (ou sozinho em 2,5 s) abre com a raridade — comum, raro ou épico. O XP já foi dado; aqui é só a festa. */
+  function chestShow(row, chest) {
+    var rar = chest.rar || (chest.big ? 'epic' : 'common'), names = { common: T('Comum'), rare: T('Raro!'), epic: T('Épico!') };
+    row.classList.add('closed', 'rar-' + rar); row.setAttribute('role', 'button'); row.tabIndex = 0;
+    row.setAttribute('aria-label', T('Abrir o baú do dia'));
+    var hint = el('em', 'chest-hint', T('Toque para abrir')); row.insertBefore(hint, row.children[1]);
+    var knocks = [700, 1300, 1900].map(function (ms) { return setTimeout(function () { if (row.classList.contains('closed') && row.offsetParent) { Sound.chestKnock(); haptic('place'); } }, ms); });
+    var open = function () {
+      if (!row.classList.contains('closed')) return;
+      knocks.forEach(clearTimeout); clearTimeout(auto);
+      if (!row.offsetParent) { row.classList.remove('closed'); return; } // janela já fechou: sem festa fora da tela
+      row.classList.remove('closed'); row.classList.add('opened'); row.removeAttribute('role'); row.removeAttribute('tabindex');
+      row.querySelector('.chest-ic').textContent = rar === 'epic' ? '💎' : rar === 'rare' ? '✨' : '🎁';
+      hint.remove();
+      var tag = el('span', 'chest-rar hype ' + (rar === 'epic' ? 't4' : rar === 'rare' ? 't3' : 't1')); tag.appendChild(MZHype.build(document, names[rar], rar === 'common' ? 1 : 3)); row.insertBefore(tag, row.children[1]);
+      Sound.chestOpen(rar); haptic(rar === 'common' ? 'line' : 'combo', rar === 'epic' ? 5 : 3);
+      if (rar === 'epic' && !homeCheer) homeCheer = T('Baú épico! Que sorte! 💎'); // v1.30
+      if (rar !== 'common' && settings.anim !== 'off') { var cf = el('div', 'confetti'), cols = rar === 'epic' ? ['#b46bff', '#4bd2ff', '#ff4b6e', '#ffd23f'] : ['#4bd2ff', '#7ee8ff', '#ffffff']; for (var i = 0; i < 18; i++) { var c = el('i'); c.style.left = (Math.random() * 100) + '%'; c.style.background = cols[i % cols.length]; c.style.animationDelay = (Math.random() * 0.4) + 's'; cf.appendChild(c); } row.appendChild(cf); }
+      announce(T('Baú {r}: +{n} XP', { r: names[rar], n: fmt(chest.xp) }));
+    };
+    var auto = setTimeout(open, 2500);
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  }
   function xpBlock(x) {
     var b = el('div', 'xp-box' + (x.levelsUp && x.levelsUp.length ? ' up' : ''));
     var top = el('div', 'xp-top');
@@ -2409,6 +2947,13 @@
     fill.style.width = from + '%'; bar.appendChild(fill); b.appendChild(bar);
     setTimeout(function () { fill.style.width = pct + '%'; }, 250);
     b.appendChild(el('small', 'muted', T(x.after.title) + ' · ' + T('{c}/{n} XP para o próximo', { c: fmt(x.after.cur), n: fmt(x.after.need), l: x.after.level + 1 })));
+    if (FLAGS.juice && x.levelsUp && x.levelsUp.length) { // v1.30: subir de nível de jogador ganha fala animada e fanfarra
+      setTimeout(function () {
+        if (!document.contains(b) || !b.offsetParent) return;
+        var up = el('span', 'xp-levelup hype t3'); up.appendChild(MZHype.build(document, T('Nível {n}!', { n: x.after.level }), 1)); b.appendChild(up); b.classList.add('lvl-flash');
+        Sound.hype(3); haptic('combo', 4);
+      }, 900);
+    }
     return b;
   }
   function showResult(o) {
@@ -2426,25 +2971,54 @@
       if (stack) $('#over-card').insertBefore(box, stack); else $('#over-card').appendChild(box);
       if (list.some(function (r) { return r.kind === 'trophy'; })) later(function () { Sound.record(); }, 500);
     }
+    if (FLAGS.juice) { // v1.30 (chave juice): os botões principais (continuar / jogar de novo) sobem para logo abaixo da pontuação — sem rolar a tela
+      var oc = $('#over-card'), st0 = oc.querySelector('.stack'), anchor = oc.querySelector('.final-score + p.muted') || oc.querySelector('.final-score');
+      if (st0 && anchor) {
+        var topAct = el('div', 'stack top-actions'), btns = Array.prototype.slice.call(st0.querySelectorAll('.btn'));
+        btns.filter(function (bt, i) { return i < 2 && !bt.classList.contains('ghost-dark'); }).forEach(function (bt) { topAct.appendChild(bt); });
+        if (topAct.children.length) anchor.parentNode.insertBefore(topAct, anchor.nextSibling);
+      }
+      // v1.30 (dono: menos poluição): números da partida e conquistas ficam recolhidos em "Detalhes"; o resultado principal fica limpo
+      var extras = Array.prototype.filter.call(oc.querySelectorAll(':scope > .over-stats, :scope > ul.rules, :scope > .rewards'), Boolean);
+      if (extras.length) {
+        var nRew = oc.querySelectorAll(':scope > .rewards .reward').length;
+        var det = el('details', 'over-more'), sum = el('summary', '', nRew ? (nRew === 1 ? T('Detalhes da partida · 1 conquista') : T('Detalhes da partida · {n} conquistas', { n: nRew })) : T('Detalhes da partida'));
+        det.appendChild(sum); extras.forEach(function (x) { det.appendChild(x); });
+        var st1 = oc.querySelector(':scope > .stack:not(.top-actions)'); if (st1) oc.insertBefore(det, st1); else oc.appendChild(det);
+        det.addEventListener('toggle', function () { if (det.open) Sound.uiOpen(); });
+      }
+    }
     $('#over-card').classList.toggle('record', !!o.record); // moldura iluminada no recorde
     var big = $('#over-card .final-score');
-    if (big && typeof o.countUp === 'number' && settings.anim !== 'off' && o.countUp > 0) { // pontuação final contando
-      var t0 = performance.now(), dur = 900;
-      (function step() {
-        var k = Math.min(1, (performance.now() - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-        big.textContent = fmt(o.countUp * e);
-        if (k < 1 && document.contains(big)) requestAnimationFrame(step);
-      })();
-    }
-    if ((o.badge || o.stars === 3) && settings.anim === 'full') { // comemoração de recorde / 3 estrelas
+    // v1.30 (chave juice): no recorde, a contagem é mais longa, faz "tique-tique" subindo e explode no momento em que passa o recorde anterior
+    var drum = !!FLAGS.juice && !!o.record && o.prevBest > 0 && settings.anim === 'full' && !!big && typeof o.countUp === 'number';
+    var badgeEl = $('#over-card .badge');
+    if (drum && badgeEl) badgeEl.classList.add('wait');
+    var celebrate = function () {
+      if (!(((o.badge && !o.near) || o.stars === 3) && settings.anim === 'full')) return; // v1.30: "Quase!" não é festa
       var cf = el('div', 'confetti'), cols = pal(THEMES[themeIdx]);
       for (var i = 0; i < 36; i++) {
         var p = el('i'); p.style.left = (Math.random() * 100) + '%'; p.style.background = cols[i % cols.length];
         p.style.animationDelay = (Math.random() * 0.5) + 's'; p.style.transform = 'rotate(' + (Math.random() * 180) + 'deg)'; cf.appendChild(p);
       }
       $('#over-card').appendChild(cf);
+    };
+    if (big && typeof o.countUp === 'number' && settings.anim !== 'off' && o.countUp > 0) { // pontuação final contando
+      var t0 = performance.now(), dur = drum ? 1600 : 900, broke = false, lastTick = 0;
+      (function step() {
+        var now = performance.now(), k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, drum ? 2.2 : 3), v = o.countUp * e;
+        big.textContent = fmt(v);
+        if (drum && !broke && now - lastTick > 70 && k < 1) { lastTick = now; Sound.tick(Math.min(1, v / o.prevBest)); }
+        if (drum && !broke && v >= o.prevBest) {
+          broke = true; big.classList.add('broke'); if (badgeEl) { badgeEl.classList.remove('wait'); badgeEl.classList.add('pop'); }
+          celebrate(); Sound.record(); haptic('celebrate');
+          shout('novo_recorde', 'Novo recorde!'); // v1.30: o apresentador grita o recorde (v1.31: voz gravada, se houver)
+        }
+        if (k < 1 && document.contains(big)) requestAnimationFrame(step);
+      })();
     }
-    if (o.badge) Sound.record();
+    if (!drum) celebrate();
+    if (o.badge && !drum && !o.near) Sound.record();
     closeOverlay('#ov-settings'); closeOverlay('#ov-pause'); // v1.16 (QA): fim de jogo nunca abre por cima de outra janela
     openOverlay('#ov-over');
     setTimeout(function () { var b = $('#over-card .btn'); if (b) b.focus({ preventScroll: true }); }, 60);
@@ -2546,6 +3120,11 @@
   /* v1.22 (pedido do dono): imagem do resultado para story/WhatsApp — tabuleiro final, pontos, combo, frase de desafio e link.
    * Feita na hora num canvas (nada sai do aparelho sozinho; quem compartilha é a pessoa). */
   var GAME_NAME = 'KABLOX', SITE_URL = 'kablox-jogo.github.io';
+  var shareKbq = null; // v1.30: imagem do Kabloquinho para o compartilhar (carrega antes, a imagem é montada na hora)
+  function prepShareKbq(mood) {
+    if (!FLAGS.mascote || settings.kbq === false || !window.MZMascot || !MZMascot.svgFor) return;
+    var im = new Image(); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(MZMascot.svgFor(mood)); shareKbq = im;
+  }
   function makeShareImage() {
     var W = 1080, H = 1920, c = document.createElement('canvas'); c.width = W; c.height = H;
     var g = c.getContext('2d'), th = THEMES[themeIdx], bt = boardTheme(), m = modeOf();
@@ -2579,6 +3158,7 @@
     if (md) tags.push(md.icon + ' ' + T('Medalha de {m}', { m: T(md.name) }));
     tags.push(T('Jogador nível {n}', { n: plv.level }));
     if (skd > 1) tags.push('🔥 ' + skd);
+    if (shareKbq && shareKbq.complete && shareKbq.naturalWidth) g.drawImage(shareKbq, bx + bs - 190, by - 150, 180, 180); // v1.30 (chave mascote): Kabloquinho sentado no tabuleiro
     g.font = body(46); g.fillStyle = 'rgba(255,255,255,.92)'; g.fillText(tags.join('  ·  '), W / 2, 1520);
     g.font = disp(76); shadowText(T('Me bate se for capaz!'), W / 2, 1630, '#ffffff');
     g.font = body(50); g.fillStyle = '#4fe3ff'; g.fillText(T('Jogue grátis: {url}', { url: SITE_URL }), W / 2, 1720);
@@ -2635,6 +3215,7 @@
     loadTutorialStep();
     requestAnimationFrame(function () { layout(); drawTray(true); });
   }
+  var coachKbq = null;
   function loadTutorialStep() {
     var st = TUTORIAL[tutStep];
     state.board = Progress.boardFromRows(st.board, SIZE);
@@ -2643,6 +3224,10 @@
     tutTarget = st.target;
     $('#coach').hidden = false;
     $('#coach-text').textContent = (tutStep + 1) + '/' + TUTORIAL.length + ' · ' + T(st.text);
+    if (FLAGS.mascote && settings.kbq !== false && window.MZMascot && MZMascot.create) { // v1.30 (chave mascote): o Kabloquinho ensina — fica ao lado do texto do tutorial
+      if (!coachKbq) { coachKbq = MZMascot.create(); var cw = el('div', 'coach-line'); var cp = $('#coach-text'); cp.parentNode.insertBefore(cw, cp); coachKbq.mount(cw); cw.appendChild(cp); coachKbq.el.classList.add('kbq-coach'); coachKbq.el.tabIndex = -1; }
+      coachKbq.react('happy', 700);
+    }
     updateHud(); drawTray(true); requestRender();
     announce(T(st.text));
   }
@@ -2654,6 +3239,7 @@
       return;
     }
     tutTarget = null;
+    if (coachKbq) coachKbq.react(res.lineCount ? 'wow' : 'happy', 900); // v1.30: comemora o acerto
     later(function () {
       if (modeOf() !== 'tutorial') return;
       tutStep++;
@@ -2728,12 +3314,33 @@
     b.classList.add(below ? 'down' : 'up');
     b.style.setProperty('--ax', Math.max(18, Math.min(bw - 18, r.left + r.width / 2 - left)) + 'px');
   }
+  var layerTheme = 'terror';
+  function eventLayer(th) { // v1.28: fundo do evento — lua e morcegos (Halloween) ou neve caindo e estrela (Natal)
+    if (th === layerTheme) return; layerTheme = th; var lay = $('#event-layer'); lay.innerHTML = '';
+    if (th === 'natal') { lay.appendChild(el('i', 'xstar', '')); for (var i = 1; i <= 8; i++) lay.appendChild(el('i', 'snow n' + i, '❄')); if (fwPreview || MZNatal.isNewYearsEve(today())) for (var f = 1; f <= 4; f++) lay.appendChild(el('i', 'fw f' + f, '')); } // v1.29: fogos de Réveillon em 31/12
+    else { lay.appendChild(el('i', 'moon', '')); [1, 2, 3].forEach(function (n) { lay.appendChild(el('i', 'bat b' + n, '🦇')); }); }
+  }
+  /* v1.30 (chave juice): selo NOVO nos modos que a pessoa ainda não abriu — some no primeiro toque */
+  function newTags() {
+    if (!FLAGS.juice) return;
+    var seen = store.get('gb.seenNew', {}) || {}, ev = eventNow();
+    [['#btn-ranked', 'ranked', !!FLAGS.ranked], ['#btn-friends', 'friends', !!FLAGS.ranked], ['#btn-events', 'ev-' + (ev ? ev.id : ''), !!ev], ['#btn-zen', 'zen-novo', !!FLAGS.zenNew]].forEach(function (it) {
+      var b = $(it[0]); if (!b) return;
+      var tag = b.querySelector('.new-badge'), want = it[2] && !seen[it[1]]; // (o botão da Ranqueada aparece um instante depois; o selo já fica pronto nele)
+      if (want && !tag) {
+        tag = el('em', 'tile-badge new-badge', T('NOVO')); tag.setAttribute('aria-hidden', 'true'); b.appendChild(tag);
+        b.addEventListener('click', function once() { var sn = store.get('gb.seenNew', {}) || {}; sn[it[1]] = 1; store.set('gb.seenNew', sn); var t2 = b.querySelector('.new-badge'); if (t2) t2.remove(); b.removeEventListener('click', once); });
+      } else if (!want && tag) tag.remove();
+    });
+  }
   function show(name) {
+    if (name !== 'game') { Sound.setHeat(0); if (typeof heartbeat === 'function') heartbeat(false); } // v1.30: fora do jogo a trilha volta ao normal e o batimento para
     Object.keys(screens).forEach(function (k) { screens[k].classList.toggle('active', k === name); });
-    var evl = eventNow() && (name !== 'game' || evGame()); $('#event-layer').hidden = !evl || settings.anim === 'off'; document.body.classList.toggle('ev-terror', !!evl); // v1.24: lua e morcegos
+    var evl = eventNow() && (name !== 'game' || evGame()); $('#event-layer').hidden = !evl || settings.anim === 'off'; document.body.classList.toggle('ev-terror', !!evl && evTheme() === 'terror'); document.body.classList.toggle('ev-natal', !!evl && evTheme() === 'natal'); if (evl) eventLayer(evTheme()); // v1.24: lua e morcegos
     if (name !== 'home' && $('#news-bar')) $('#news-bar').hidden = true; // v1.24: barra de novidades só na tela inicial
+    ambLayer(!evl);
     tipsFor(name);
-    if (name === 'home') refreshHome();
+    if (name === 'home') { refreshHome(); newTags(); homeMascot(); }
     else if (!(history.state && history.state.gb)) { try { history.pushState({ gb: 1 }, ''); } catch (e) {} }
     if (window.GBMenus && window.GBMenus.onShow) window.GBMenus.onShow(name);
     if (Sound.setCalm) Sound.setCalm(name === 'game' && zenOn()); // v1.26: som calmo só na partida Zen
@@ -2789,13 +3396,17 @@
       function (e) { return !e.disabled && e.offsetParent !== null; });
   }
   function openOverlay(sel) {
+    var tEl = $('#toast'); // v1.30 (correção): aviso que apareceu um instante antes da janela ia para cima dela (cobria a pontuação final)
+    if (tEl && tEl.classList.contains('show')) { tEl.style.top = ''; tEl.classList.remove('ingame'); tEl.classList.add('bottom'); }
     if (drag) endDrag(false);
     var ov = $(sel);
     if (ov.hidden) focusStack.push(document.activeElement);
     ov.hidden = false;
+    if (FLAGS.juice && sel !== '#ov-over' && sel !== '#ov-result') Sound.uiOpen(); // v1.30: som suave de abrir janela
     $('#app').setAttribute('inert', '');
     setTimeout(function () { if (!ov.contains(document.activeElement)) { var f = focusables(ov)[0]; if (f) f.focus({ preventScroll: true }); } }, 30);
     if (sel === '#ov-settings' && $('#skins')) buildSkinPicker();
+    if (sel === '#ov-settings' && FLAGS.juice) settingsJump();
     if (sel === '#ov-pause') {
       var names = { classic: 'Modo Clássico', zen: 'Modo Zen', challenge: 'Desafio', daily: 'Desafio do dia', tutorial: 'Tutorial' };
       $('#pause-mode').textContent = T(names[modeOf()]) + (modeOf() === 'challenge' ? ': ' + T(challengeDef(state.chId).name) : '');
@@ -2806,6 +3417,7 @@
     var ov = $(sel);
     if (ov.hidden) return;
     ov.hidden = true;
+    if (FLAGS.juice && sel !== '#ov-over' && sel !== '#ov-result') Sound.uiBack(); // v1.30: som suave de voltar (não ao sair do fim de partida)
     if (!overlayOpen()) $('#app').removeAttribute('inert');
     var back = focusStack.pop();
     if (back && document.contains(back) && !overlayOpen()) { try { back.focus({ preventScroll: true }); } catch (e) {} }
@@ -2819,14 +3431,14 @@
   var legendQ = [], legendRaf = 0;
   function showLegendUnlock() {
     var lg = legendQ.shift(); if (!lg) return;
-    if (overlayOpen() || !screenIs('game')) { reward('trophy', T('Bloco lendário liberado: {name}!', { name: T(lg.name) }), T('Para sempre seu. Ele aparece às vezes nas peças do Clássico.')); showLegendUnlock(); return; }
+    if (overlayOpen() || !screenIs('game')) { reward('trophy', T('Medalha lendária: {name}!', { name: T(lg.name) }), T('É sua para sempre. Veja na Coleção.')); showLegendUnlock(); return; }
     if (drag) endDrag(false);
     var card = $('#legend-card'); card.innerHTML = '';
     var mk = function (tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
-    card.appendChild(mk('p', 'legend-kicker', '✨ ' + T('Bloco lendário liberado!') + ' ✨'));
+    card.appendChild(mk('p', 'legend-kicker', '🏅 ' + T('Medalha lendária conquistada!') + ' 🏅'));
     var cv = mk('canvas', 'legend-art'); var dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = cv.height = Math.round(170 * dpr); card.appendChild(cv);
     card.appendChild(mk('h2', '', lg.icon + ' ' + T(lg.name))).id = 'legend-title';
-    card.appendChild(mk('p', 'legend-text', T('Você passou de {n} pontos. Este bloco é seu para sempre e aparece às vezes nas suas peças do Clássico — às vezes com poder: ⚡ 💎 👑 🌈', { n: fmt(lg.min) })));
+    card.appendChild(mk('p', 'legend-text', T('Você passou de {n} pontos no Clássico. Esta medalha é sua para sempre e fica guardada na sua Coleção.', { n: fmt(lg.min) })));
     var ok = mk('button', 'btn primary big', T('Que demais!')); ok.type = 'button'; card.appendChild(ok);
     ok.addEventListener('click', function () { cancelAnimationFrame(legendRaf); closeOverlay('#ov-legend'); if (legendQ.length) setTimeout(showLegendUnlock, 300); });
     openOverlay('#ov-legend');
@@ -2838,11 +3450,11 @@
       g.save(); g.translate(W / 2, W / 2); g.rotate(t / 4000); // raios de luz girando
       for (var i = 0; i < 12; i++) { g.rotate(Math.PI / 6); g.fillStyle = 'rgba(255,215,120,' + (0.10 + 0.06 * Math.sin(t / 300 + i)) + ')'; g.beginPath(); g.moveTo(0, 0); g.lineTo(W * 0.6, -W * 0.06); g.lineTo(W * 0.6, W * 0.06); g.closePath(); g.fill(); }
       g.restore();
-      if (window.MZLegend) window.MZLegend.draw(g, lg.id, (W - sz) / 2, (W - sz) / 2, sz, legendLite() ? 0 : t, { seed: 3, lite: legendLite() });
+      if (window.MZLegend) window.MZLegend.drawMedal(g, lg.id, (W - sz * 1.55) / 2, (W - sz * 1.55) / 2 - W * 0.06, sz * 1.55, legendLite() ? 0 : t, { seed: 3, lite: legendLite() }); // v1.31: medalha
       if (!legendLite() || k < 1) legendRaf = requestAnimationFrame(spin);
     })(t0);
     Sound.record(); haptic('place');
-    announce(T('Bloco lendário liberado: {name}!', { name: T(lg.name) }));
+    announce(T('Medalha lendária: {name}!', { name: T(lg.name) }));
   }
 
   /* ---------------- configurações ---------------- */
@@ -2866,6 +3478,7 @@
   function applySettings() {
     document.body.classList.remove('anim-full', 'anim-reduced', 'anim-off');
     document.body.classList.add('anim-' + settings.anim);
+    document.body.classList.toggle('juice', !!FLAGS.juice); // v1.30: acabamento de animação (laboratório)
     document.body.classList.toggle('q-low', settings.quality === 'low'); // v1.16: qualidade baixa corta efeitos de CSS contínuos
     Sound.setSfx(settings.sound);
     Sound.setVolume(settings.sfxVol / 100, settings.musicVol / 100);
@@ -2874,7 +3487,9 @@
     $('#set-music-vol').value = settings.musicVol; $('#out-music-vol').textContent = settings.musicVol + '%';
     $('#set-sound').checked = settings.sound;
     $('#set-music').checked = settings.music;
+    if ($('#set-tts')) { $('#set-tts').checked = settings.tts !== false; $('#row-tts').hidden = !(FLAGS.hype && window.MZHype && (MZHype.Speak.supported() || (MZHype.Voice.list && MZHype.Voice.list.length))) || !settings.sound; }
     $('#set-vibrate').checked = settings.vibrate;
+    if ($('#set-kbq')) { $('#set-kbq').checked = settings.kbq !== false; $('#row-kbq').hidden = !FLAGS.mascote; }
     $('#set-symbols').checked = !!settings.symbols;
     $('#set-particles').checked = !!settings.particles;
     var fxr = document.querySelector('input[name="fx"][value="' + settings.fx + '"]'); if (fxr) fxr.checked = true;
@@ -2897,6 +3512,11 @@
   $('#row-vibrate').hidden = !navigator.vibrate;
   $('#set-sound').addEventListener('change', function (e) { settings.sound = e.target.checked; saveSettings(); applySettings(); Sound.unlock(); Sound.tap(); });
   $('#set-music').addEventListener('change', function (e) { settings.music = e.target.checked; saveSettings(); Sound.unlock(); applySettings(); });
+  if ($('#set-tts')) $('#set-tts').addEventListener('change', function (e) { // v1.30: ao ligar, fala uma vez para a pessoa ouvir
+    settings.tts = e.target.checked; saveSettings(); applySettings();
+    if (settings.tts && window.MZHype) { var vf = MZHype.Voice.fileFor(MZI18n.lang, 'incrivel'); if (vf && Sound.voicePreload) Sound.voicePreload([vf]); setTimeout(function () { shout('incrivel', 'Incrível!'); }, vf ? 250 : 0); } // v1.31: voz gravada, se houver
+  });
+  if (window.MZHype) MZHype.Speak.warm();
   ['sfx', 'music'].forEach(function (k) {
     var inp = $('#set-' + k + '-vol');
     inp.addEventListener('input', function () {
@@ -2919,6 +3539,11 @@
   });
   Array.prototype.forEach.call(document.querySelectorAll('input[name="vibStrength"]'), function (r) {
     r.addEventListener('change', function () { settings.vibStrength = r.value; saveSettings(); haptic('lines'); });
+  });
+  if ($('#set-kbq')) $('#set-kbq').addEventListener('change', function (e) {
+    settings.kbq = e.target.checked; saveSettings();
+    if (window.MZMascot) MZMascot.show(mascotOn());
+    if (homeKbq) { homeKbq.show(settings.kbq); if (homeBub) homeBub.classList.remove('show'); }
   });
   $('#set-symbols').addEventListener('change', function (e) { settings.symbols = e.target.checked; saveSettings(); setSkin(settings.blocks); });
   $('#set-particles').addEventListener('change', function (e) { settings.particles = e.target.checked; saveSettings(); applySettings(); });
@@ -2959,6 +3584,25 @@
     return true;
   }
 
+  /** v1.27 (Galeria de visuais, Entrega E): visual inicial escolhido pelo jogador — só um já descoberto; senão o Clássico. */
+  function startLookId() {
+    var id = settings.startLook;
+    if (FLAGS.gallery && id && Themes.indexOfId(id) > 0 && THEMES[Themes.indexOfId(id)].id === id && stats.themesSeen[id]) return id;
+    return THEMES[0].id;
+  }
+  /** Miniatura de um visual: pedaço de tabuleiro com blocos (cores e acabamento do visual). */
+  function drawLookPreview(cv, themeId) {
+    var th = THEMES[Math.max(0, Themes.indexOfId(themeId))], W = cv.width, H = cv.height, ctx = cv.getContext('2d'), cols = 6, rows = 4;
+    var cs = Math.floor(Math.min(W / cols, H / rows)), ox = Math.floor((W - cs * cols) / 2), oy = Math.floor((H - cs * rows) / 2);
+    var g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, th.bg[0]); g.addColorStop(1, th.bg[1]); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = th.board; Themes.roundRect(ctx, ox - 3, oy - 3, cs * cols + 6, cs * rows + 6, 8); ctx.fill();
+    var pat = ['..1100', '.11002', '330.22', '34455.'];
+    for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
+      var ch = pat[r].charAt(c), x = ox + c * cs, y = oy + r * cs;
+      if (ch === '.') { ctx.fillStyle = th.empty; Themes.roundRect(ctx, x + 1, y + 1, cs - 2, cs - 2, cs * 0.18); ctx.fill(); }
+      else ctx.drawImage(sprite(th, +ch % 7, cs, 'classic'), x, y, cs, cs);
+    }
+  }
   /** Desenha a miniatura (2×2 blocos) de um estilo num canvas de 88×88. */
   function drawSkinPreview(cv, skinId) {
     var th = THEMES[0], ctx = cv.getContext('2d'); // v1.25: cada estilo mostra as próprias cores (antes pegava o visual da última partida e ficava tudo igual)
@@ -3037,6 +3681,8 @@
     if (data['gb.stats'] && typeof data['gb.stats'] === 'object') { try { out['gb.stats'] = Progress.normalize(data['gb.stats']); n++; } catch (e) {} }
     if (data['gb.settings'] && typeof data['gb.settings'] === 'object' && !Array.isArray(data['gb.settings'])) out['gb.settings'] = data['gb.settings'];
     if (data['gb.tutorialDone'] === true) out['gb.tutorialDone'] = true;
+    var rk = data['gb.ranked']; // v1.27: Ranqueada — só números inteiros e não negativos
+    if (rk && typeof rk === 'object' && !Array.isArray(rk)) { var ro = {}; ['rp', 'w', 'l', 'd', 'best', 'streak', 'top', 'elo', 'topElo', 'games'].forEach(function (k) { var v = rk[k]; ro[k] = typeof v === 'number' && isFinite(v) && v >= 0 ? Math.floor(v) : 0; }); out['gb.ranked'] = ro; }
     ['classic', 'zen', 'daily', 'challenge'].forEach(function (m) {
       var v = data['gb.save.' + m]; if (v && Logic.isValidState(v)) { out['gb.save.' + m] = v; n++; }
     });
@@ -3136,6 +3782,7 @@
   // v1.26: o botão do evento agora fica na tela Eventos (menus.js)
   function openEvent() { // v1.24: Desafio do evento (Semana do Terror)
     var ev = eventNow(); if (!ev) return;
+    if (ev.theme === 'natal') { openNatal(ev); return; }
     showDialog({ title: ev.icon + ' ' + T(ev.name), list: [
       T('Liberte {n} morcegos 🦇 numa partida só.', { n: ev.goal }), T('Quebre as gaiolas para soltar os morcegos. Elas aparecem bem mais neste desafio.'),
       T('Corra: se a gaiola não quebrar em {n} jogadas, o morcego foge.', { n: ev.flee }),
@@ -3146,6 +3793,34 @@
             T('O morcego foge em {n} jogadas.', { n: ev.nightmare.flee }), T('Prêmio: {b}, guardado para sempre.', { b: T(ev.nightmare.badge) })],
             buttons: [{ label: T('Encarar o Pesadelo'), cls: 'primary big', fn: function () { closeDialog(); startGame('event'); state.nightmare = true; state.undoLeft = 0; saveGame(); updateHud(); } },
               { label: T('Agora não'), cls: 'ghost-dark', fn: closeDialog }] }); } }] : [])
+        .concat([{ label: T('Agora não'), cls: 'ghost-dark', fn: closeDialog }]) });
+  }
+  function startNatal(tier) { // v1.29: 1 = Desafio de Natal, 2 = Noite Feliz, 3 = Nevasca
+    closeDialog(); startGame('event');
+    state.tier = tier; state.nightmare = tier >= 2; state.hard = tier >= 2 ? 2 : 0;
+    if (tier >= 2) { state.undoLeft = 0; helperMode = null; }
+    saveGame(); updateHud(); updateHelpers();
+  }
+  function openNatal(ev) { // v1.29 (dono): três níveis — um mais fácil e dois bem mais difíceis
+    var mine = (stats.events || {})[ev.id] || {}, best = mine.best || {}, w1 = !!(stats.rares && stats.rares.gf), w2 = !!mine.nightmare, w3 = !!mine.storm;
+    var line = function (icon, name, t, won, open, rule) { return icon + ' ' + T(name) + ' — ' + (won ? '✅ ' + T('vencido') : open ? T('seu melhor: {b} de {n}', { b: best[t] || 0, n: (t === 3 ? ev.storm : t === 2 ? ev.nightmare : ev).goal }) : '🔒 ' + rule); };
+    var play = function () { closeDialog(); if (hasSave('event') && !(state && state.mode === 'event' && state.over)) confirmReplace('event', function () { startNatal(1); }, function () { startGame('event', { resume: true }); }); else startNatal(1); };
+    showDialog({ title: ev.icon + ' ' + T(ev.name), list: [
+      T('Abra {n} presentes 🎁 numa partida só. Presente que não abre a tempo some na neve.', { n: ev.goal }),
+      '✨ ' + T('Presente dourado vale 3, mas some mais rápido. Arrisca?'),
+      line('🎄', 'Desafio de Natal', 1, w1, true, ''),
+      line('🌟', 'Noite Feliz', 2, w2, w1, T('vença o Desafio de Natal')),
+      line('❄️', 'Nevasca', 3, w3, w2, T('vença a Noite Feliz')),
+      T('O evento acaba em 31/12.')],
+      buttons: [{ label: '🎄 ' + T('Desafio de Natal'), cls: 'primary big', fn: play }]
+        .concat(w1 ? [{ label: '🌟 ' + T('Noite Feliz'), cls: 'confirm', fn: function () {
+          closeDialog(); showDialog({ title: '🌟 ' + T('Fase Noite Feliz'), list: [T('Abra {n} presentes numa partida só.', { n: ev.nightmare.goal }), T('Bem mais presentes no tabuleiro, mas peças mais difíceis.'),
+            T('Sem desfazer e sem ajudas.'), T('O presente some em {n} jogadas.', { n: ev.nightmare.flee }), T('Prêmio: {b}, guardado para sempre.', { b: T(ev.nightmare.badge) })],
+            buttons: [{ label: T('Encarar a Noite Feliz'), cls: 'primary big', fn: function () { startNatal(2); } }, { label: T('Agora não'), cls: 'ghost-dark', fn: closeDialog }] }); } }] : [])
+        .concat(w2 ? [{ label: '❄️ ' + T('Nevasca'), cls: 'confirm', fn: function () {
+          closeDialog(); showDialog({ title: '❄️ ' + T('Fase Nevasca'), list: [T('Abra {n} presentes numa partida só.', { n: ev.storm.goal }), T('Bolas de neve caem no tabuleiro a cada {n} jogadas.', { n: ev.storm.snow }),
+            T('Sem desfazer e sem ajudas.'), T('O presente some em {n} jogadas.', { n: ev.storm.flee }), T('Prêmio: {b}, guardado para sempre.', { b: T(ev.storm.badge) })],
+            buttons: [{ label: T('Encarar a Nevasca'), cls: 'primary big', fn: function () { startNatal(3); } }, { label: T('Agora não'), cls: 'ghost-dark', fn: closeDialog }] }); } }] : [])
         .concat([{ label: T('Agora não'), cls: 'ghost-dark', fn: closeDialog }]) });
   }
   $('#btn-bug').addEventListener('click', function () { Sound.tap(); openBugReport(); });
@@ -3254,7 +3929,13 @@
   window.addEventListener('pageshow', function () { syncSavedSettings(); });
   window.addEventListener('pagehide', function () { saveGame(); saveStats(); });
   // outra aba apagou os dados: não regravar nada e recarregar
-  window.addEventListener('storage', function (e) { if (e.key === 'gb.wipe' && e.newValue) { wiping = true; location.reload(); } else if (e.key === 'gb.settings') syncSavedSettings(); });
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'gb.wipe' && e.newValue) { wiping = true; location.reload(); }
+    else if (e.key === 'gb.settings') syncSavedSettings();
+    else if (e.key === 'gb.stats' && e.newValue && !wiping) { // v1.27: outra aba gravou o progresso → usa o mais novo (antes esta aba sobrescrevia e o progresso da outra sumia)
+      try { var t = stats.timeMs; stats = Progress.normalize(JSON.parse(e.newValue)); stats.timeMs = Math.max(t || 0, stats.timeMs || 0); lastStatsSnap = null; if (screenIs('home')) refreshHome(); } catch (err) {}
+    }
+  });
 
   /* ---------------- PWA: offline e atualização (js/ui.js) ---------------- */
   window.MZUI.setupPwa({ enabled: !INLINE, beforeUpdate: function () { saveGame(); saveStats(); } });
@@ -3289,6 +3970,9 @@
       T('Novidades: medalhas de recorde, nível do jogador e sequência de dias 🔥.')],
       buttons: [{ label: T('Bora!'), cls: 'primary', fn: closeDialog }] });
   }, 900);
+  if (lateLegends.length) setTimeout(function () { // v1.31: medalhas lendárias ganhas pelo recorde de antes
+    toast(lateLegends.length > 1 ? T('{n} medalhas lendárias!', { n: lateLegends.length }) : T('Medalha lendária: {name}!', { name: T(lateLegends[0].name) }), T('Pelo seu recorde. Use como bloco na Ranqueada.'));
+  }, 2600);
   try { if (localStorage.getItem('gb.restored')) { localStorage.removeItem('gb.restored'); setTimeout(function () { toast(T('Progresso restaurado!'), T('Seus recordes e conquistas estão de volta.')); }, 600); } } catch (e) {}
   applySettings();
   Sound.setTheme(THEMES[0]);
@@ -3297,18 +3981,27 @@
   // interface usada por js/menus.js
   window.GB = {
     VERSION: VERSION, Progress: Progress, THEMES: THEMES, Skins: Skins,
-    get stats() { return stats; }, get settings() { return settings; }, flags: FLAGS, get themeIdx() { return themeIdx; },
-    fmt: fmt, today: today, store: store, saveStats: saveStats, toast: toast, sound: Sound,
+    get stats() { return stats; }, get settings() { return settings; }, flags: FLAGS, loadArt: loadArt, openStreak: openStreak, get themeIdx() { return themeIdx; },
+    fmt: fmt, today: today, store: store, saveStats: saveStats, toast: toast, sound: Sound, shout: shout,
     startGame: startGame, startTutorial: startTutorial, hasSave: hasSave, bestFor: bestFor, challengeDef: challengeDef,
     confirmReplace: confirmReplace, openChallengeIntro: openChallengeIntro, showDialog: showDialog, closeDialog: closeDialog,
     show: show, goHome: goHome, openSettings: function () { settingsReturn = null; openOverlay('#ov-settings'); },
     eventNow: eventNow, openEvent: openEvent, saveSettings: saveSettings,
+    previewEvent: function (id) { if (!(window.MZ_LAB === true || /[?&]feat=all\b/.test(location.search)) || !FLAGS.natal) return false; forcedEvent = id; loadArt(); natalPreview = true; rareCache = {}; sprites = {}; return !!eventNow(); },
+    previewFireworks: function () { if (!natalPreview) return false; fwPreview = true; layerTheme = ''; return true; }, // v1.29: laboratório — ver os fogos antes de 31/12
+    natalPreview: function () { return natalPreview; }, adventDay: adventDay, openAdvent: openAdvent, // v1.28: só no laboratório — ver o Natal antes de dezembro
     galera: galera, weeklyData: weeklyData, shareWeekly: shareWeekly, openPasteFriend: openPasteFriend, askNick: askNick, nick: nick,
-    drawSkinPreview: drawSkinPreview, drawGarden: drawGarden, drawArt: drawArt, setSkin: setSkin, resetAll: resetAll, records: records, multText: multText,
+    drawSkinPreview: drawSkinPreview, drawLookPreview: drawLookPreview, startLookId: startLookId, drawGarden: drawGarden, drawArt: drawArt, setSkin: setSkin, resetAll: resetAll, records: records, multText: multText,
     tutorialDone: function () { return !!store.get('gb.tutorialDone', false); }
   };
 
+  if (FLAGS.juice && $('#home-streak')) { // v1.30: 🔥 vira botão da trilha de 7 dias
+    var hsk = $('#home-streak'); hsk.setAttribute('role', 'button'); hsk.tabIndex = 0; hsk.classList.add('tappable'); hsk.setAttribute('aria-label', T('Ver sequência de dias'));
+    hsk.addEventListener('click', function () { Sound.tap(); openStreak(); });
+    hsk.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openStreak(); } });
+  }
   show('home');
+  if (eventNow() || forcedEvent) loadArt(); else setTimeout(function () { loadArt(); }, 1500); // v1.30: arte do evento depois da abertura
 
   // ganchos para testes automatizados: só existem com ?debug na URL e em localhost
   // segurança: só no computador de desenvolvimento (localhost), nunca no site publicado
@@ -3317,6 +4010,7 @@
     get themeIdx() { return themeIdx; },
     get layout() { return L; },
     get anims() { return anims.length; },
+    get animTypes() { return anims.map(function (a) { return a.type; }); }, // v1.29: testes
     get stats() { return stats; },
     get perf() { return perf; },
     mood: function () { updateComboChip(); requestRender(); }, // v1.25: testes da moldura de combo
@@ -3330,6 +4024,7 @@
       var px = r.left + L.pad + col * L.cell + w / 2, py = r.top + L.pad + row * L.cell + h + lift; // ponto acelerado desejado
       return { sx: sx, sy: sy, x: sx + (px - sx) / k, y: sy + (py - sy) / k };
     },
+    say: function (key, tier, sub) { return sayHype({ key: key, voice: '', tier: tier }, [1.15, SIZE / 2 - 0.5], sub || '', 0, true); }, // v1.30: conferir as falas
     look: function (id, animate) { state.themeId = id; themeIdx = Themes.indexOfId(id); applyTheme(themeIdx, !!animate); },
     transform: function (skin, big) { if (!state.look) state.look = { skin: null, left: 0, last: [], since: 99 }; applyLook(skin, [SIZE / 2 - 0.5, SIZE / 2 - 0.5], { big: !!big }); },
     shareImage: function () { return makeShareImage(); }, share: function () { shareResult(); },

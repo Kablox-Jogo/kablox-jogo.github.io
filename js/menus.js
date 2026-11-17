@@ -33,7 +33,13 @@
     $('#zen-sub').textContent = G.hasSave('zen') ? T('Continuar') + (zg ? ' · 🌱 ' + Math.min(12, 1 + Math.floor(zg / 12)) : '') : T('No seu ritmo');
     var ev = G.eventNow(), st = G.stats, played = ev && (st.events || {})[ev.id];
     $('#events-ico').textContent = ev ? ev.icon : '🎉';
-    $('#events-sub').textContent = ev ? T(ev.name) : T('Desafio da Semana');
+    var evSub = ev ? T(ev.name) : T('Desafio da Semana');
+    if (ev && G.flags.juice && ev.to) { // v1.30 (chave do acabamento): evento ao vivo — bolinha piscando e quantos dias faltam
+      var dl = Math.round((new Date(ev.to + 'T23:59:59') - new Date()) / 864e5);
+      if (dl >= 0 && dl <= 40) evSub = T(ev.name) + ' · ' + (dl <= 0 ? T('último dia!') : dl === 1 ? T('falta 1 dia') : T('faltam {n} dias', { n: dl }));
+    }
+    $('#events-sub').textContent = evSub;
+    $('#btn-events').classList.toggle('live', !!(ev && G.flags.juice));
     $('#badge-events').hidden = !(ev && !played);
   }
   window.GBHome = { sync: syncModePick };
@@ -62,7 +68,10 @@
       { id: 'challenge', icon: 'i-flag', name: T('Desafios'), line: T('Fases com objetivo e estrelas.'), rules: P.MODES.challenge.rules.map(T),
         info: T('{a} de {b} desafios concluídos · {s} estrelas', { a: P.doneChallenges(G.stats), b: P.CHALLENGES.length, s: P.stars(G.stats) }) }
     ];
-    if (G.eventNow()) list.unshift({ id: 'event', emoji: '🎃', name: T('Semana do Terror'), line: T('Liberte {n} morcegos 🦇 numa partida só.', { n: G.eventNow().goal }),
+    if (G.eventNow() && G.eventNow().theme === 'natal') list.unshift({ id: 'event', emoji: '🎄', name: T('Natal'), line: T('Abra {n} presentes 🎁 numa partida só.', { n: G.eventNow().goal }),
+      rules: [T('Quebre a linha do presente para abrir. Eles aparecem bem mais neste desafio.'), T('Prêmio: a conquista Ajudante do Noel, para sempre.'), T('O evento acaba em 31/12.')],
+      info: G.stats.rares && G.stats.rares.gf ? T('Você já é Ajudante do Noel! Jogue de novo por diversão.') : T('Prêmio ainda não conquistado') });
+    else if (G.eventNow()) list.unshift({ id: 'event', emoji: '🎃', name: T('Semana do Terror'), line: T('Liberte {n} morcegos 🦇 numa partida só.', { n: G.eventNow().goal }),
       rules: [T('Quebre as gaiolas para soltar os morcegos. Elas aparecem bem mais neste desafio.'), T('Prêmio: a conquista Caçador de Morcegos, para sempre.'), T('O evento acaba domingo, 8/11.')],
       info: G.stats.rares && G.stats.rares.pk ? T('Você já é Caçador de Morcegos! Jogue de novo por diversão.') : T('Prêmio ainda não conquistado') });
     list.forEach(function (m) {
@@ -100,6 +109,14 @@
       ? T(st.daily.played > 1 ? 'Seu melhor hoje: {n} pontos ({k} tentativas)' : 'Seu melhor hoje: {n} pontos ({k} tentativa)', { n: fmt(st.daily.best), k: st.daily.played })
       : T('Você ainda não jogou hoje.'));
     sec.appendChild(info);
+    if (G.flags.juice) { // v1.30 (chave do acabamento): quanto falta para o desafio e as missões novas
+      var cd = h('p', 'daily-left', ''), first = true, tick = function () {
+        if (!first && !document.contains(cd)) { clearInterval(cdT); return; } first = false; // 1ª vez: a seção ainda não entrou na tela
+        var n = new Date(), mid = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1), left = Math.max(0, mid - n), hh = Math.floor(left / 3600000), mm = Math.floor(left % 3600000 / 60000);
+        cd.textContent = '⏳ ' + T('Desafio e missões novos em {t}', { t: hh ? T('{h} h {m} min', { h: hh, m: mm }) : T('{m} min', { m: Math.max(1, mm) }) });
+      }, cdT = setInterval(tick, 30000);
+      sec.appendChild(cd); tick();
+    }
     var row = h('div', 'mode-actions');
     if (G.hasSave('daily')) row.appendChild(btn('▶ ' + T('Continuar'), 'primary big', function () { G.startGame('daily', { resume: true }); }));
     row.appendChild(btn('▶ ' + (st.daily.day === day && st.daily.played ? T('Jogar de novo') : T('Jogar')), G.hasSave('daily') ? '' : 'primary big', function () {
@@ -174,35 +191,38 @@
 
   /* ---------------- coleção ---------------- */
   /* v1.25: álbum de eventos — cada evento que o jogador jogou fica guardado para sempre (selo, blocos vistos, abóboras) */
-  var hwSheet = null;
-  function drawHwIcon(cv, key) {
-    var art = window.MZHalloweenArt; if (!art) return;
-    var row = art.keys.indexOf(key), c = art.cell, ctx = cv.getContext('2d');
-    function paint() { ctx.clearRect(0, 0, 88, 88); for (var q = 0; q < 4; q++) ctx.drawImage(hwSheet, q * c, row * c, c, c, (q % 2) * 44, Math.floor(q / 2) * 44, 44, 44); }
-    if (!hwSheet) { hwSheet = new Image(); hwSheet.src = art.src; }
-    if (hwSheet.complete && hwSheet.naturalWidth) paint(); else hwSheet.addEventListener('load', paint);
+  var artSheets = {};
+  function drawHwIcon(cv, key, art) { // v1.29: serve para Halloween e Natal (cada um com sua folha)
+    art = art || window.MZHalloweenArt; if (!art) { if (window.GB && GB.loadArt) GB.loadArt(function () { drawHwIcon(cv, key, window.MZHalloweenArt); }); return; } // v1.30: arte carrega depois
+    var row = art.keys.indexOf(key), c = art.cell, ctx = cv.getContext('2d'), sh = artSheets[art.src.length] = artSheets[art.src.length] || new Image();
+    function paint() { ctx.clearRect(0, 0, 88, 88); for (var q = 0; q < 4; q++) ctx.drawImage(sh, q * c, row * c, c, c, (q % 2) * 44, Math.floor(q / 2) * 44, 44, 44); }
+    if (!sh.src) sh.src = art.src;
+    if (sh.complete && sh.naturalWidth) paint(); else sh.addEventListener('load', paint);
   }
   function renderEventAlbum(body, st) {
     var evs = (window.MZEvents && window.MZEvents.LIST) || [], now = G.eventNow();
     evs.forEach(function (ev) {
       var mine = (st.events || {})[ev.id], active = now && now.id === ev.id;
       if (!ev.album || (!mine && !active)) return; // evento que você não jogou (e que já acabou) não aparece
+      var xm = ev.theme === 'natal';
       var seen = (mine && mine.seen) || {}, nSeen = ev.album.filter(function (a) { return seen[a[0]]; }).length;
       var sec = section(ev.icon + ' ' + T(ev.name) + ' 2026', active
-        ? T('Só no Desafio do evento. Descubra os blocos de Halloween jogando: cada estilo que aparecer na partida entra aqui. Fica guardado para sempre.')
+        ? (xm ? (ev.album.length ? T('Só no Desafio do evento. Descubra os blocos de Natal jogando: cada estilo que aparecer na partida entra aqui. Fica guardado para sempre.') : T('Só no Desafio do evento. Abra presentes e ganhe o selo, que fica guardado para sempre.')) : T('Só no Desafio do evento. Descubra os blocos de Halloween jogando: cada estilo que aparecer na partida entra aqui. Fica guardado para sempre.'))
         : T('Evento encerrado. Tudo o que você conquistou fica guardado aqui para sempre.'));
       var sel = h('p', 'm-note ev-badge' + (mine ? ' got' : ''), mine ? '🏅 ' + T(ev.badge) + ' — ' + T('guardado para sempre') : T('Jogue o Desafio do evento para ganhar o {b}.', { b: T(ev.badge) }));
       sec.appendChild(sel);
-      var pkTxt = st.rares && st.rares.pk ? T('🏆 Caçador de Morcegos: conquistado!') : T('🏆 Caçador de Morcegos: liberte {n} morcegos numa partida (seu melhor: {b}).', { n: ev.goal, b: (mine && mine.pk) || 0 });
+      var pkTxt = xm ? (st.rares && st.rares.gf ? T('🏆 Ajudante do Noel: conquistado!') : T('🏆 Ajudante do Noel: abra {n} presentes numa partida (seu melhor: {b}).', { n: ev.goal, b: (mine && mine.pk) || 0 })) : st.rares && st.rares.pk ? T('🏆 Caçador de Morcegos: conquistado!') : T('🏆 Caçador de Morcegos: liberte {n} morcegos numa partida (seu melhor: {b}).', { n: ev.goal, b: (mine && mine.pk) || 0 });
       sec.appendChild(h('p', 'm-note', pkTxt));
-      if (ev.nightmare && (active || (mine && mine.nightmare))) sec.appendChild(h('p', 'm-note ev-badge' + (mine && mine.nightmare ? ' got' : ''), mine && mine.nightmare ? '👹 ' + T(ev.nightmare.badge) + ' — ' + T('guardado para sempre') : T('Fase Pesadelo: vença o desafio para liberar e ganhar o {b}.', { b: T(ev.nightmare.badge) })));
+      if (ev.nightmare && (active || (mine && mine.nightmare))) sec.appendChild(h('p', 'm-note ev-badge' + (mine && mine.nightmare ? ' got' : ''), mine && mine.nightmare ? (xm ? '🌟 ' : '👹 ') + T(ev.nightmare.badge) + ' — ' + T('guardado para sempre') : xm ? T('Fase Noite Feliz: vença o desafio para liberar e ganhar o {b}.', { b: T(ev.nightmare.badge) }) : T('Fase Pesadelo: vença o desafio para liberar e ganhar o {b}.', { b: T(ev.nightmare.badge) })));
+      if (xm && ev.storm && (active || (mine && mine.storm))) sec.appendChild(h('p', 'm-note ev-badge' + (mine && mine.storm ? ' got' : ''), mine && mine.storm ? '❄️ ' + T(ev.storm.badge) + ' — ' + T('guardado para sempre') : T('Fase Nevasca: vença a Noite Feliz para liberar e ganhar o {b}.', { b: T(ev.storm.badge) })));
+      if (!ev.album.length) { body.appendChild(sec); return; } // v1.28: Natal ainda sem blocos próprios (esperando as imagens do dono)
       sec.appendChild(h('p', 'm-note', T('Blocos descobertos: {a} de {b}', { a: nSeen, b: ev.album.length })));
       var grid = h('div', 'col-grid gallery');
       ev.album.forEach(function (a) {
         var got = !!seen[a[0]], b = h('div', 'col-item' + (got ? '' : ' locked'));
         b.setAttribute('role', 'img'); b.setAttribute('aria-label', got ? T(a[1]) : T('Bloco ainda não descoberto'));
         var cv = document.createElement('canvas'); cv.width = 88; cv.height = 88; b.appendChild(cv);
-        if (got) drawHwIcon(cv, a[0]); else { var cx = cv.getContext('2d'); cx.fillStyle = '#2a2140'; cx.fillRect(0, 0, 88, 88); cx.fillStyle = '#8f7fb0'; cx.font = 'bold 40px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('?', 44, 46); }
+        if (got) drawHwIcon(cv, a[0], xm ? window.MZNatalArt : window.MZHalloweenArt); else { var cx = cv.getContext('2d'); cx.fillStyle = '#2a2140'; cx.fillRect(0, 0, 88, 88); cx.fillStyle = '#8f7fb0'; cx.font = 'bold 40px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('?', 44, 46); }
         b.appendChild(h('strong', '', got ? T(a[1]) : '???'));
         grid.appendChild(b);
       });
@@ -210,16 +230,70 @@
       body.appendChild(sec);
     });
   }
+  /* v1.29 (laboratório): Natal — árvore que acende uma luz por linha e Calendário do Advento (sem castigo) */
+  function drawTree(cv, lit, done) {
+    var N = window.MZNatal, W = cv.width, H = cv.height, g = cv.getContext('2d'); g.clearRect(0, 0, W, H);
+    g.fillStyle = '#6b3d1f'; g.fillRect(W * 0.44, H * 0.86, W * 0.12, H * 0.1); // tronco
+    var tg = g.createLinearGradient(0, H * 0.08, 0, H * 0.9); tg.addColorStop(0, '#2fa35a'); tg.addColorStop(1, '#14562e'); g.fillStyle = tg;
+    N.TREE_LAYERS.forEach(function (t) { // três camadas de galhos
+      g.beginPath(); g.moveTo(W * 0.5, H * t[0]); g.lineTo(W * (0.5 + t[2]), H * t[1]); g.lineTo(W * (0.5 - t[2]), H * t[1]); g.closePath(); g.fill(); });
+    var cols = ['#ff4b5c', '#ffd23f', '#5fd3ff', '#ffffff'];
+    N.lightSpots().forEach(function (p, i) {
+      var on = i < lit; g.beginPath(); g.arc(W * p.x, H * p.y, on ? W * 0.012 : W * 0.006, 0, 7);
+      if (on) { g.fillStyle = cols[p.c]; g.shadowColor = cols[p.c]; g.shadowBlur = W * 0.03; } else { g.fillStyle = 'rgba(0,0,0,.22)'; g.shadowBlur = 0; }
+      g.fill(); });
+    g.shadowBlur = done ? W * 0.08 : 0; g.shadowColor = '#fff3b0'; g.fillStyle = done ? '#ffd23f' : '#5a5a6a'; // estrela no topo
+    g.beginPath(); for (var k = 0; k < 10; k++) { var a = k * Math.PI / 5 - Math.PI / 2, r = k % 2 ? W * 0.03 : W * 0.07; g.lineTo(W * 0.5 + Math.cos(a) * r, H * 0.07 + Math.sin(a) * r); } g.closePath(); g.fill();
+  }
+  function renderNatalExtras(body, st) {
+    var N = window.MZNatal, d = N.data(st), day = G.adventDay(), pv = G.natalPreview();
+    var ts = section('🎄 ' + T('Árvore de Natal'), T('Cada linha que você limpar em dezembro, em qualquer modo, acende uma luz. Acenda todas para ganhar o selo.'));
+    ts.classList.add('xmas-tree');
+    var cv = document.createElement('canvas'); cv.width = 240; cv.height = 300; cv.className = 'xmas-tree-cv'; cv.setAttribute('role', 'img');
+    cv.setAttribute('aria-label', T('{a} de {b} luzes acesas.', { a: d.tree, b: N.TREE_LIGHTS })); drawTree(cv, d.tree, !!d.treeDone);
+    ts.appendChild(cv); ts.appendChild(h('p', 'mode-best', d.treeDone ? '🌟 ' + T('Selo Árvore Acesa 2026') + ' — ' + T('guardado para sempre') : T('{a} de {b} luzes acesas.', { a: d.tree, b: N.TREE_LIGHTS })));
+    body.appendChild(ts);
+    var as = section('📅 ' + T('Calendário do Advento'), T('Uma porta por dia, de 1 a 25 de dezembro. Perdeu um dia? Sem problema: a porta abre depois.'));
+    as.classList.add('xmas-advent');
+    var grid = h('div', 'advent-grid');
+    for (var n = 1; n <= N.LAST_DOOR; n++) (function (n) {
+      var stt = N.doorState(st, n, day, pv), b = h('button', 'advent-door ' + stt + (n === 25 ? ' big' : ''), stt === 'open' ? '✓' : String(n));
+      b.setAttribute('aria-label', stt === 'open' ? T('Porta {n} aberta', { n: n }) : stt === 'ready' ? T('Abrir a porta {n}', { n: n }) : T('Porta {n}: abre no dia {n}', { n: n }));
+      if (stt !== 'ready') b.disabled = true;
+      else b.addEventListener('click', function () { G.sound.unlock(); if (G.openAdvent(n)) renderEvents(); });
+      grid.appendChild(b);
+    })(n);
+    as.appendChild(grid);
+    as.appendChild(h('p', 'm-note', T('{a} de {b} portas abertas', { a: N.openedCount(st), b: N.LAST_DOOR }) + (d.adventGift ? ' · 🏅 ' + T('Selo Advento 2026') : '')));
+    body.appendChild(as);
+    if (N.isNewYearsEve(G.today())) body.appendChild(section('🎆 ' + T('Feliz Ano Novo!'), T('Hoje tem fogos de Réveillon no fundo do jogo. Obrigado por jogar em 2026!')));
+  }
   /* v1.26 (dono): Modo Eventos — o que está valendo agora, o que vem por aí e o álbum (nada é apagado) */
   function fmtDay(k) { var p = String(k).split('-'); return p[2] + '/' + p[1]; }
   function renderEvents() {
     var body = $('#body-events'), st = G.stats, day = G.today(), evs = (window.MZEvents && window.MZEvents.LIST) || [], now = G.eventNow(); body.innerHTML = '';
+    var F = window.MZFlags || {};
+    if (F.natal && (!now || now.theme !== 'natal') && (window.MZ_LAB === true || /[?&]feat=all\b/.test(location.search))) { // v1.28: prévia do Natal (só laboratório)
+      var pv = section('🎄 ' + T('Prévia do Natal'), T('Só no laboratório: jogue o evento de Natal antes de dezembro.'));
+      pv.appendChild(btn('▶ ' + T('Ver prévia do Natal'), 'primary', function () { if (G.previewEvent('natal')) { G.show('events'); renderEvents(); } }));
+      body.appendChild(pv);
+    } else if (F.natal && G.natalPreview()) {
+      var pf = section('🎆 ' + T('Prévia do Réveillon'), T('Só no laboratório: veja os fogos de 31/12 agora. Na prévia, as portas do Advento abrem todas.'));
+      pf.appendChild(btn('🎆 ' + T('Ver fogos do Réveillon'), '', function () { if (G.previewFireworks()) { G.show('events'); renderEvents(); } }));
+      body.appendChild(pf);
+    }
     if (now) { // evento valendo
       var mine = (st.events || {})[now.id], sec = section(now.icon + ' ' + T(now.name), T('Até {d}. Conteúdo só deste evento: não aparece no Clássico nem no Zen.', { d: fmtDay(now.to) }));
       sec.classList.add('hero-daily', 'ev-live');
-      if (now.goal) sec.appendChild(h('p', 'mode-best', T('Seu melhor: {b} de {n}', { b: (mine && mine.pk) || 0, n: now.goal })));
+      if (now.theme === 'natal') { // v1.29: os três níveis do Natal, com o melhor de cada um
+        var bb = (mine && mine.best) || {}, w1 = !!(st.rares && st.rares.gf), w2 = !!(mine && mine.nightmare), w3 = !!(mine && mine.storm);
+        [['🎄', T('Desafio de Natal'), 1, w1, true], ['🌟', T('Noite Feliz'), 2, w2, w1], ['❄️', T('Nevasca'), 3, w3, w2]].forEach(function (r) {
+          sec.appendChild(h('p', 'mode-best ev-tier' + (r[3] ? ' got' : r[4] ? '' : ' locked'), r[0] + ' ' + r[1] + ' — ' + (r[3] ? '✅ ' + T('vencido') : r[4] ? T('seu melhor: {b} de {n}', { b: bb[r[2]] || 0, n: now.goal }) : '🔒')));
+        });
+      } else if (now.goal) sec.appendChild(h('p', 'mode-best', T('Seu melhor: {b} de {n}', { b: (mine && mine.pk) || 0, n: now.goal })));
       var bt = btn('▶ ' + T('Jogar o evento'), 'primary big', function () { G.openEvent(); }); bt.id = 'btn-event';
       sec.appendChild(bt); body.appendChild(sec);
+      if (now.theme === 'natal' && window.MZNatal) renderNatalExtras(body, st);
     }
     var wk = section('🏆 ' + T('Desafio da Semana'), T('Mesmas peças para todos até domingo. No fim, o jogo cria um código para comparar com a galera.'));
     wk.classList.add('ev-week');
@@ -279,18 +353,21 @@
     // v1.26 (dono): blocos lendários — cadeado com o bloco escondido até passar a marca no Clássico
     } // fim do Zen novo
     if (window.MZLegend && G.flags.legends) {
-      var lgSec = section('✨ ' + T('Blocos lendários'), T('Liberados para sempre ao passar a marca no Clássico. Aparecem às vezes nas peças — e às vezes com poder: ⚡ limpa linha e coluna · 💎 muitos pontos · 👑 dobra a jogada · 🌈 completa uma linha.'));
+      var lgSec = section('🏅 ' + T('Medalhas lendárias'), T('Prêmios para sempre: cada uma chega quando você passa a marca de pontos no Clássico.'));
       var lg = h('div', 'leg-grid'), lgN = 0;
       window.MZLegend.LIST.forEach(function (l, i) {
         var got = st.legends && st.legends[l.id], it = h('div', 'leg-item' + (got ? '' : ' locked'));
-        if (got) { lgN++; var c2 = document.createElement('canvas'); c2.width = c2.height = 128; window.MZLegend.draw(c2.getContext('2d'), l.id, 0, 0, 128, 900 + i * 400, { seed: i }); it.appendChild(c2); it.appendChild(h('strong', '', T(l.name))); it.appendChild(h('small', '', T('Liberado'))); }
-        else { it.appendChild(h('div', 'leg-lock', '🔒')); it.appendChild(h('strong', '', '???')); it.appendChild(h('small', '', T('{n} pontos', { n: G.fmt(l.min) }))); }
+        var c2 = document.createElement('canvas'); c2.width = c2.height = 160; c2.className = 'leg-medal'; // v1.31: medalha (apagada até conquistar)
+        window.MZLegend.drawMedal(c2.getContext('2d'), l.id, 0, 0, 160, 900 + i * 400, { seed: i, locked: !got }); it.appendChild(c2);
+        if (got) { lgN++; it.appendChild(h('strong', '', T(l.name))); it.appendChild(h('small', '', T('Conquistada'))); }
+        else { it.appendChild(h('strong', '', '???')); it.appendChild(h('small', '', T('{n} pontos', { n: G.fmt(l.min) }))); }
         lg.appendChild(it);
       });
-      lgSec.appendChild(lg); lgSec.appendChild(h('p', 'm-note', T('{a} de {b} liberados', { a: lgN, b: window.MZLegend.LIST.length })));
+      lgSec.appendChild(lg); lgSec.appendChild(h('p', 'm-note', T('{a} de {b} medalhas', { a: lgN, b: window.MZLegend.LIST.length })));
       body.appendChild(lgSec);
     }
 
+    if (G.flags.gallery) { renderLookGallery(body, st); return; } // v1.27 (laboratório): Galeria de visuais
     var th = section(T('Visuais'), T('O visual do jogo muda sozinho em jogadas especiais (combos, várias linhas, tabuleiro limpo, recordes). Só a aparência muda, nunca as regras.'));
     var tl = h('ul', 'theme-list');
     G.THEMES.forEach(function (t, i) {
@@ -307,6 +384,35 @@
     });
     th.appendChild(tl);
     body.appendChild(th);
+  }
+
+  /* v1.27 (laboratório, Entrega E): Galeria de visuais — prévia do tabuleiro, nome, descrição, cadeado, "em uso".
+   * Escolher um visual = a partida COMEÇA nele; durante a partida o visual continua mudando nas jogadas especiais. */
+  function renderLookGallery(body, st) {
+    var cur = G.startLookId(), sec = section(T('Galeria de visuais'), T('Escolha com qual visual a partida começa. Durante a partida ele continua mudando sozinho nas jogadas especiais. Só a aparência muda, nunca as regras.'));
+    var grid = h('div', 'look-grid'), seenN = 0;
+    G.THEMES.forEach(function (t, i) {
+      var seen = i === 0 || !!st.themesSeen[t.id], inUse = t.id === cur, card = h('div', 'look-card' + (seen ? '' : ' locked') + (inUse ? ' in-use' : ''));
+      if (seen) seenN++;
+      var cv = document.createElement('canvas'); cv.width = 240; cv.height = 150; cv.setAttribute('role', 'img');
+      cv.setAttribute('aria-label', seen ? T('Prévia do visual {name}', { name: T(t.name) }) : T('Visual escondido'));
+      card.appendChild(cv);
+      if (seen) G.drawLookPreview(cv, t.id); else { var x = cv.getContext('2d'); x.fillStyle = '#1A2438'; x.fillRect(0, 0, 240, 150); x.fillStyle = 'rgba(255,255,255,.06)'; for (var k = 0; k < 240; k += 14) x.fillRect(k, 0, 6, 150); }
+      var tx = h('div', 'look-text');
+      tx.appendChild(h('strong', '', seen ? T(t.name) : '???'));
+      tx.appendChild(h('small', '', seen ? T(t.msg) : T('Aparece em jogadas especiais')));
+      card.appendChild(tx);
+      if (inUse) card.appendChild(h('span', 'look-badge', T('Em uso no início')));
+      else if (seen) {
+        var b = h('button', 'btn look-use', T('Usar no início'));
+        b.addEventListener('click', function () { G.sound.unlock(); G.sound.tap(); G.settings.startLook = t.id; G.saveSettings(); renderCollection(); G.toast(T('Visual escolhido'), T('As próximas partidas começam em {name}.', { name: T(t.name) })); });
+        card.appendChild(b);
+      } else card.insertAdjacentHTML('beforeend', '<span class="look-lock">' + icon('i-lock', 18) + '</span>');
+      grid.appendChild(card);
+    });
+    sec.appendChild(grid);
+    sec.appendChild(h('p', 'm-note', T('{a} de {b} visuais descobertos', { a: seenN, b: G.THEMES.length })));
+    body.appendChild(sec);
   }
 
   /* ---------------- estatísticas e conquistas ---------------- */
@@ -347,6 +453,12 @@
   function renderRecords() {
     var body = $('#body-records'), st = G.stats, day = G.today(); body.innerHTML = '';
     var SN = window.MZSeason, lv = SN.levelOf(st.xp || 0), sk = st.streak || {};
+    if (window.MZFlags && window.MZFlags.juice && !st.games && !st.best.classic) { // v1.30 (chave juice): tela vazia que convida a jogar, em vez de vários zeros
+      var em = section('🏁 ' + T('Seus recordes começam aqui'), T('Jogue sua primeira partida: pontuação, maior combo e sequência de dias aparecem nesta tela.'));
+      em.classList.add('empty-invite');
+      em.appendChild(btn('▶ ' + T('Jogar agora'), 'primary', function () { G.startGame('classic'); }));
+      body.appendChild(em);
+    }
     var sec = section(T('Temporada {n}', { n: SN.SEASON }));
     var g = h('div', 'stat-grid');
     [[fmt(st.best.classic), T('Recorde Clássico')], [fmt(st.best.zen), T('Recorde Zen')],

@@ -49,10 +49,16 @@
         recoveryChance: 0.5, extraSets: 10, highScoreFade: 0.85, tripleShare: 1, // v1.22: ajuda some mais para quem tem muitos pontos (0,7→0,85)
         // v1.19 (pedido do dono): peça de salvação disfarçada — com o tabuleiro apertado, às vezes 1 das 3 peças é
         // sorteada entre as que completam uma linha agora (não sempre a melhor; as outras 2 vêm normais).
-        rescueFrom: 0.35, rescueChance: 0.45 }, // v1.22: peça salvadora menos frequente (0,6→0,45; ainda × (1 − dificuldade))
+        rescueFrom: 0.35, rescueChance: 0.45 }, // v1.22: peça salvadora menos frequente (0,6→0,45; ainda × (1 − dificuldade)). No Clássico: ver `opening` (v1.31)
       // v1.24: fase "lendária" — de `from` pontos em diante a ajuda vai sumindo e as peças grandes/estranhas aparecem mais,
       // até o máximo em `from + span`. Só no Clássico (os desafios usam filas fixas).
-      late: { from: 300000, span: 300000, bigBoost: 1.5, awkwardBoost: 1.0 }
+      late: { from: 300000, span: 300000, bigBoost: 1.5, awkwardBoost: 1.0 },
+      // v1.31 (dono: "o clássico tá bem chatinho, bem difícil"): COMEÇO MAIS GENTIL. Até `until` pontos a dificuldade
+      // é cortada (até `diffCut` no início, sumindo aos poucos) e sempre há um pouco de ajuda (`assistFloor`, também some).
+      // Não vale no modo Evento (ele tem a própria dificuldade, medida em tools/event_sim.js). Medido em tools/balance_sim.js (300 partidas): robô casual — partidas curtas
+      // 21%→15%, chega a 10 mil em 23%→27%; robô bom — mediana 13,8 mil→21,8 mil pontos, 100 mil em 0%→11%.
+      // Também no Clássico (não no Evento): a peça salvadora vem mais (`rescueChance` 0,45→0,6) e mais cedo (`rescueFrom` 0,35→0,28).
+      opening: { until: 4000, diffCut: 0.7, assistFloor: 0.3, rescueFrom: 0.28, rescueChance: 0.6 }
     },
     // v1.21 — blocos especiais (pedido do dono): a partir do nível 3, às vezes 1 bloco de uma peça nova vem especial.
     // Estrela: ao ser limpa dá pontos extras. Bomba: ao ser limpa explode os vizinhos 3×3 (blocos contam pontos).
@@ -221,9 +227,12 @@
    * Lê a situação da partida e devolve { difficulty, assist } entre 0 e 1.
    * ctx: { score, movesSinceClear, recent: [linhas limpas nas últimas jogadas] }
    */
+  // v1.29: fases difíceis de evento (Noite Feliz / Nevasca) — menos ajuda do diretor e peças difíceis mais cedo. Medido em tools/event_sim.js.
+  var HARD = { 1: { fillStart: 0.32, fillFull: 0.66, halfAt: 700 }, 2: { fillStart: 0.42, fillFull: 0.8, halfAt: 350 } };
   function director(board, ctx) {
     ctx = ctx || {};
-    var D = CONFIG.generator.difficulty, A = CONFIG.generator.assist, score = ctx.score || 0;
+    var D = CONFIG.generator.difficulty, A = CONFIG.generator.assist, score = ctx.score || 0, hd = HARD[ctx.hard];
+    if (hd) { A = Object.assign({}, A, { fillStart: hd.fillStart, fillFull: hd.fillFull }); D = Object.assign({}, D, { halfAt: hd.halfAt }); }
     var byScore = Math.pow(score / (score + D.halfAt), D.curve); // curva suave: devagar no começo, mais firme depois
     var recent = Array.isArray(ctx.recent) ? ctx.recent.slice(-D.recent) : [];
     var rate = recent.length >= 4 ? recent.reduce(function (a, b) { return a + b; }, 0) / recent.length : 0;
@@ -236,6 +245,8 @@
     var assist = clamp01(tight) * (1 - A.highScoreFade * byScore); // quem já vai longe recebe menos ajuda
     var late = lateFor(score);
     assist *= 1 - late;
+    var O = CONFIG.generator.opening;
+    if (O && !hd && !ctx.event) { var op = 1 - clamp01(score / O.until); difficulty *= 1 - O.diffCut * op; assist = Math.max(assist, O.assistFloor * op); } // v1.31: começo mais gentil
     if (ctx.easy && (ctx.score || 0) < 600) { difficulty *= 0.25; assist = Math.max(assist, 0.35); } // v1.24: primeira partida mais tranquila (até ~5 mil pontos)
     return { difficulty: difficulty, assist: assist, fill: fill, mobility: mob, late: late };
   }
@@ -293,7 +304,8 @@
     }
     if (!set) set = firstFit || fallback;
     // v1.19: tabuleiro apertado e nenhuma peça do trio limpa linha → às vezes troca 1 peça (posição sorteada) por uma de salvação
-    if (set && dir.assist >= g.assist.rescueFrom && rng() < g.assist.rescueChance * (1 - dir.difficulty) && // some com a dificuldade (pontos altos seguem difíceis)
+    var O = !ctx.event && !HARD[ctx.hard] && g.opening ? g.opening : g.assist; // v1.31: Clássico tem a peça salvadora mais generosa
+    if (set && dir.assist >= O.rescueFrom && rng() < O.rescueChance * (1 - dir.difficulty) && // some com a dificuldade (pontos altos seguem difíceis)
         !canClearNow(board, set.map(function (p) { return SHAPES[p.s]; }))) {
       var rs = rescueShape(board, rng, ctx.score);
       if (rs >= 0) set[Math.floor(rng() * 3)] = { s: rs, c: 0 };
@@ -391,7 +403,7 @@
   function ctxOf(state) {
     // o equilíbrio usa a escala antiga (state.base); partidas salvas antigas não têm base → usam a pontuação
     return { score: typeof state.base === 'number' && isFinite(state.base) ? state.base : state.score, movesSinceClear: state.movesSinceClear, level: levelFor(state.lines || 0),
-      recent: Array.isArray(state.recent) ? state.recent.filter(function (v) { return typeof v === 'number' && isFinite(v); }) : [], easy: !!state.easy, zen: state.mode === 'zen' };
+      recent: Array.isArray(state.recent) ? state.recent.filter(function (v) { return typeof v === 'number' && isFinite(v); }) : [], easy: !!state.easy, zen: state.mode === 'zen', event: state.mode === 'event', hard: state.hard === 1 || state.hard === 2 ? state.hard : 0 };
   }
 
   /** v1.17 — Reviver (Clássico, 1× por partida, grátis): troca as peças da bandeja por 3 que cabem no tabuleiro atual.
@@ -535,6 +547,8 @@
     if (state.recent.length > CONFIG.generator.difficulty.recent) state.recent.splice(0, state.recent.length - CONFIG.generator.difficulty.recent);
     var gained = Math.round((blockPts + linePts + comboPts + clearPts + spx.pts) * mult);
     if (spx.double) { gained *= 2; baseGained *= 2; } // v1.26: 👑 Coroa
+    var feverOn = (state.fever | 0) > 0; // v1.30 (laboratório): Modo Febre — pontos em dobro por algumas jogadas (o app liga com combo ×5)
+    if (feverOn) { gained *= 2; state.fever = (state.fever | 0) - 1; }
     baseGained += spx.base;
     state.score += gained;
     state.base = (typeof state.base === 'number' && isFinite(state.base) ? state.base : 0) + baseGained;
@@ -561,7 +575,7 @@
       cleared: cleared, blockPts: blockPts, linePts: linePts, comboPts: comboPts,
       clearPts: Math.round(clearPts * mult), boardClear: clearPts > 0, baseGained: baseGained,
       level: newLevel, mult: multFor(newLevel), levelUp: newLevel > level, multUsed: mult, comboBonus: Math.round(comboPts * mult), movesLeft: count > 0 ? CONFIG.combo.window : CONFIG.combo.window - state.movesSinceClear,
-      gained: gained, combo: state.combo, refilled: refilled, over: state.over
+      gained: gained, combo: state.combo, refilled: refilled, over: state.over, fever: feverOn
     };
   }
 

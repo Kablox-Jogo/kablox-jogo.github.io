@@ -357,6 +357,11 @@
     'Fragmentos, faíscas e confete': 'Fragments, sparks and confetti',
     'Fechar': 'Close',
     'seus dados ficam só neste aparelho': 'your data stays on this device',
+    '{n} medalhas lendárias!': '{n} legendary medals!', 'Pelo seu recorde. Use como bloco na Ranqueada.': 'For your high score. Use them as blocks in Ranked.',
+    'Seu bloco na Ranqueada': 'Your block in Ranked', 'Padrão': 'Default', // v1.31: bloco lendário na Ranqueada
+    'Só os seus blocos mudam. O rival continua azul.': 'Only your blocks change. The rival stays blue.',
+    'Conquiste medalhas lendárias no Clássico para usar como bloco aqui.': 'Earn legendary medals in Classic to use them as blocks here.',
+    'Voz do locutor: ElevenLabs (elevenlabs.io)': 'Announcer voice: ElevenLabs (elevenlabs.io)', // v1.31: crédito pedido pelo plano grátis
 
     // ---- peças e jogada ----
     'Espaço vazio': 'Empty slot',

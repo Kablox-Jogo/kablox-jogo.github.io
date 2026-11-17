@@ -4,6 +4,23 @@
 (function (root) {
   'use strict';
   var LIST = [
+    { v: '1.31.0', date: '2026-11-17',
+      pt: ['⚔️ Ranqueada: duelos contra robôs, 10 divisões do Ferro à Lenda',
+        '🤝 Amigos: jogue com um amigo no mesmo celular ou online, cada um no seu',
+        '🎙️ Locutor de verdade: "Incrível!", "Épico!", "Lendário!" nas jogadas fortes',
+        '🔥 Modo Febre: combo ×5 dá 3 jogadas com pontos em dobro',
+        '🟨 Kabloquinho: um bloquinho que torce por você em cima do tabuleiro',
+        '🏅 Medalhas lendárias na Coleção',
+        '🌱 Clássico mais tranquilo no começo da partida',
+        '✨ Animações mais caprichadas, baú com raridade e trilha de 7 dias'],
+      en: ['⚔️ Ranked: duels against bots, 10 divisions from Iron to Legend',
+        '🤝 Friends: play with a friend on the same phone or online, each on their own',
+        '🎙️ Real announcer: "Amazing!", "Epic!", "Legendary!" on big plays',
+        '🔥 Fever Mode: a ×5 combo gives 3 moves with double points',
+        '🟨 Kabloquinho: a little block cheering for you above the board',
+        '🏅 Legendary medals in the Collection',
+        '🌱 Calmer Classic at the start of each game',
+        '✨ Polished animations, chest rarity and a 7-day streak trail'] },
     { v: '1.27.0', date: '2026-11-15',
       pt: ['🎨 Visual novo "Premium Quadrinhos": fundo azul-marinho, dourado, contornos pretos e letra de gibi no logo, nos pontos e no combo',
         '🖐️ Tela inicial com os modos lado a lado e menu de atalhos embaixo',

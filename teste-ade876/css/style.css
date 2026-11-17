@@ -1702,3 +1702,13 @@ body.anim-full .kbq.kbq-sleep .kbq-zzz { animation: kbqZzz 2.4s ease-in-out infi
 .mode-card-btn.friends { background: linear-gradient(160deg, #FFB0C8, #FF6A8A 55%, #D6336C); color: #fff; }
 
 .mode-cards.four .new-badge { left: 6px; right: auto; top: -11px; height: 20px; min-width: 0; padding: 0 6px; font-size: 11px; line-height: 16px; } /* v1.31: o NOVO não cobre o nome no 2×2 */
+
+/* v1.31: bloco lendário na Ranqueada (só os blocos do jogador) */
+.duel-skin h3 { margin-bottom: 8px; }
+.duel-skin-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.duel-skin-b { position: relative; padding: 4px; border-radius: 12px; background: var(--navy); border: 2px solid var(--ol); cursor: pointer; line-height: 0; }
+.duel-skin-b.on { border-color: #ffd23f; box-shadow: 0 0 0 2px rgba(255, 210, 63, .35); }
+.duel-skin-b.locked { cursor: default; }
+.duel-skin-b.locked canvas { filter: grayscale(1) brightness(.45); }
+.duel-skin-lock { position: absolute; inset: 0; display: grid; place-items: center; font-size: 16px; line-height: 1; }
+.duel-skin-hint { margin: 8px 0 0; font-size: 12.5px; opacity: .75; }

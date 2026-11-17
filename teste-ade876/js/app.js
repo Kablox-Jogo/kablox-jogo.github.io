@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.30.0';
+  var VERSION = '1.31.0';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise, Season = window.MZSeason, Weekly = window.MZWeekly, Events = window.MZEvents;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   /* v1.24 (reclamação dos jogadores: "tabuleiro quase transparente, machuca a vista"): contraste mínimo garantido em
@@ -2351,6 +2351,9 @@
     store.set('gb.stats', stats);
     if (r.started) seasonNews = r;
   })();
+  // v1.31: quem já tinha feito os pontos antes das medalhas lendárias chegarem ao site ganha as medalhas agora (recorde da temporada ou o antigo)
+  var lateLegends = [];
+  try { if (FLAGS.legends && window.MZLegend) lateLegends = Season.unlockLegends(stats, Math.max((stats.best && stats.best.classic) || 0, (stats.legend && stats.legend.classic) || 0)); } catch (e) {}
   try { Progress.ensureMissions(stats, today()); } catch (e) { stats = Progress.newStats(); Progress.ensureMissions(stats, today()); }
   if (!Progress.isUnlocked(stats, settings.blocks)) settings.blocks = 'classic';
   saveStats();
@@ -3967,6 +3970,9 @@
       T('Novidades: medalhas de recorde, nível do jogador e sequência de dias 🔥.')],
       buttons: [{ label: T('Bora!'), cls: 'primary', fn: closeDialog }] });
   }, 900);
+  if (lateLegends.length) setTimeout(function () { // v1.31: medalhas lendárias ganhas pelo recorde de antes
+    toast(lateLegends.length > 1 ? T('{n} medalhas lendárias!', { n: lateLegends.length }) : T('Medalha lendária: {name}!', { name: T(lateLegends[0].name) }), T('Pelo seu recorde. Use como bloco na Ranqueada.'));
+  }, 2600);
   try { if (localStorage.getItem('gb.restored')) { localStorage.removeItem('gb.restored'); setTimeout(function () { toast(T('Progresso restaurado!'), T('Seus recordes e conquistas estão de volta.')); }, 600); } } catch (e) {}
   applySettings();
   Sound.setTheme(THEMES[0]);

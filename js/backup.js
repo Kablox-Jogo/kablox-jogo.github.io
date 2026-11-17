@@ -5,7 +5,7 @@
 (function (root) {
   'use strict';
   var PREFIX = 'BK1';
-  var KEYS = ['gb.stats', 'gb.settings', 'gb.tutorialDone', 'gb.save.classic', 'gb.save.zen', 'gb.save.daily', 'gb.save.challenge'];
+  var KEYS = ['gb.stats', 'gb.settings', 'gb.tutorialDone', 'gb.save.classic', 'gb.save.zen', 'gb.save.daily', 'gb.save.challenge', 'gb.ranked']; // v1.27: + Ranqueada
   var MAX_CODE = 300000; // ~300 KB: muito acima de um progresso real, barra lixo gigante
 
   function fnv(str) { // FNV-1a 32 bits

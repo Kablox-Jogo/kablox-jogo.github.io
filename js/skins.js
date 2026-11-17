@@ -37,11 +37,16 @@
     { id: 'bubble', name: 'Bolha', rare: true },
     { id: 'stained', name: 'Vitral', rare: true }
   ];
+  // v1.27 (laboratório, Entrega E): estilos prêmio de NÍVEL do jogador. Só existem com a chave "styles" (js/flags.js);
+  // fora dela o jogo fica exatamente como antes. prize = nível em que libera.
+  var PRIZE = [{ id: 'food', name: 'Comida', prize: 5 }, { id: 'car', name: 'Carros', prize: 10 }];
+  if (root.MZFlags && root.MZFlags.styles) PRIZE.forEach(function (p) { LIST.push(p); });
   var LIVE = { fur: true, jelly: true };          // têm movimento contínuo no tabuleiro
   var BREAK_MS = { ice: 460, stone: 540, fur: 460, jelly: 460, neon: 400, wood: 520, candy: 480, pixel: 520, crystal: 440,
     wool: 520, cheese: 460, metal: 420, bubble: 400, ocean: 460, // v1.20: quebras próprias de Lã, Queijo, Metálico, Bolha, Oceano
     classic: 420, theme: 420, glossy: 460, gradient: 460, galaxy: 520, energy: 440, rainbow: 500, holo: 460, lava: 520, gold: 520,
-    marble: 540, circuit: 460, stained: 500 }; // v1.25: todos os estilos com quebra própria
+    marble: 540, circuit: 460, stained: 500, // v1.25: todos os estilos com quebra própria
+    car: 460, food: 480 }; // v1.27: Carros (lataria amassa e solta lascas de tinta e faíscas) · Comida (a fruta espirra suco)
 
   /* ---------------- utilitários ---------------- */
   /** v1.20: aceita '#rrggbb' e 'rgb(r,g,b)' (T.lighten/T.darken devolvem rgb()). Antes, rgb() virava NaN e a cor era
@@ -457,6 +462,56 @@
         ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(x + w * 0.3, y + w * 0.22, s * 0.06, 0, 7); ctx.fill();
         break;
       }
+      case 'car': { // v1.27: Carros — pintura metálica com purpurina, duas faixas de corrida e friso cromado
+        var pc = col, rcar = s * 0.18;
+        grad = ctx.createLinearGradient(x, y, x + w * 0.35, y + w);
+        grad.addColorStop(0, L(pc, 0.4)); grad.addColorStop(0.45, pc); grad.addColorStop(1, D(pc, 0.4));
+        rr(ctx, x, y, w, w, rcar); ctx.fillStyle = grad; ctx.fill();
+        ctx.save(); rr(ctx, x, y, w, w, rcar); ctx.clip();
+        for (i = 0; i < 16; i++) { ctx.fillStyle = 'rgba(255,255,255,' + (0.18 + 0.3 * rnd(ci + 3, i)) + ')'; var fs = Math.max(0.6, s * 0.018); ctx.fillRect(x + w * rnd(ci, i), y + w * rnd(ci + 7, i), fs, fs); } // purpurina
+        var sw2 = w * 0.1, gap2 = w * 0.07, sx2 = x + w / 2 - gap2 / 2 - sw2;
+        [sx2, x + w / 2 + gap2 / 2].forEach(function (sx) { ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.fillRect(sx, y, sw2, w); ctx.fillStyle = 'rgba(0,0,0,.12)'; ctx.fillRect(sx + sw2 * 0.78, y, sw2 * 0.22, w); }); // faixas de corrida
+        var refl = ctx.createLinearGradient(x, y, x + w, y + w * 0.6); refl.addColorStop(0, 'rgba(255,255,255,0)'); refl.addColorStop(0.42, 'rgba(255,255,255,0)'); refl.addColorStop(0.5, 'rgba(255,255,255,.38)'); refl.addColorStop(0.6, 'rgba(255,255,255,0)');
+        ctx.fillStyle = refl; ctx.fillRect(x, y, w, w); // reflexo de lataria
+        ctx.restore();
+        var chrome = ctx.createLinearGradient(x, y, x, y + w); chrome.addColorStop(0, '#f6f8fa'); chrome.addColorStop(0.5, '#8a939e'); chrome.addColorStop(1, '#e3e7eb');
+        rr(ctx, x, y, w, w, rcar); ctx.strokeStyle = chrome; ctx.lineWidth = Math.max(1.4, s * 0.07); ctx.stroke(); // friso cromado
+        rr(ctx, x + s * 0.05, y + s * 0.05, w - s * 0.1, w - s * 0.1, rcar * 0.8); ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.lineWidth = Math.max(0.8, s * 0.02); ctx.stroke();
+        break;
+      }
+      case 'food': { // v1.27: Comida — uma fruta por cor (melancia, limão, kiwi, mirtilo, uva, morango, laranja). Cores próprias, como queijo e ouro.
+        var fk = ci % 7, rf = s * 0.2, cxf = x + w / 2, cyf = y + w / 2;
+        var BASE = ['#ff5a6e', '#ffe14d', '#7ac943', '#3d5bd9', '#8e44c9', '#ff4f7b', '#ff9a1f'];
+        ctx.save(); rr(ctx, x, y, w, w, rf); ctx.clip();
+        if (fk === 0) { // melancia: casca verde, faixa branca, polpa vermelha e sementes
+          ctx.fillStyle = '#2e9e4a'; ctx.fillRect(x, y, w, w); ctx.fillStyle = '#f4ffe8'; rr(ctx, x + w * 0.08, y + w * 0.08, w * 0.84, w * 0.84, rf * 0.8); ctx.fill();
+          ctx.fillStyle = BASE[0]; rr(ctx, x + w * 0.14, y + w * 0.14, w * 0.72, w * 0.72, rf * 0.7); ctx.fill();
+          ctx.fillStyle = '#1d1d1d'; [[0.35, 0.35], [0.62, 0.32], [0.48, 0.55], [0.32, 0.66], [0.66, 0.66]].forEach(function (q) { ctx.beginPath(); ctx.ellipse(x + w * q[0], y + w * q[1], w * 0.035, w * 0.055, 0.4, 0, 7); ctx.fill(); });
+        } else if (fk === 1 || fk === 6) { // limão / laranja: fatia com gomos
+          var rind = fk === 1 ? '#f2c300' : '#f27a00', pulp = fk === 1 ? '#fff27a' : '#ffb347';
+          ctx.fillStyle = rind; ctx.fillRect(x, y, w, w); ctx.fillStyle = '#fffbe8'; ctx.beginPath(); ctx.arc(cxf, cyf, w * 0.44, 0, 7); ctx.fill();
+          for (i = 0; i < 8; i++) { var a8 = i * Math.PI / 4; ctx.fillStyle = pulp; ctx.beginPath(); ctx.moveTo(cxf + Math.cos(a8 + 0.39) * w * 0.05, cyf + Math.sin(a8 + 0.39) * w * 0.05); ctx.arc(cxf, cyf, w * 0.38, a8 + 0.08, a8 + Math.PI / 4 - 0.08); ctx.closePath(); ctx.fill(); }
+        } else if (fk === 2) { // kiwi: borda marrom, polpa verde, sementes e centro claro
+          ctx.fillStyle = '#7a5a2b'; ctx.fillRect(x, y, w, w); var kg = ctx.createRadialGradient(cxf, cyf, w * 0.05, cxf, cyf, w * 0.45); kg.addColorStop(0, '#d8f5a2'); kg.addColorStop(1, BASE[2]);
+          ctx.fillStyle = kg; ctx.beginPath(); ctx.arc(cxf, cyf, w * 0.43, 0, 7); ctx.fill();
+          ctx.fillStyle = '#f6ffe0'; ctx.beginPath(); ctx.ellipse(cxf, cyf, w * 0.11, w * 0.08, 0, 0, 7); ctx.fill();
+          ctx.fillStyle = '#1d1d1d'; for (i = 0; i < 12; i++) { var a12 = i * Math.PI / 6; ctx.beginPath(); ctx.ellipse(cxf + Math.cos(a12) * w * 0.2, cyf + Math.sin(a12) * w * 0.2, w * 0.02, w * 0.035, a12, 0, 7); ctx.fill(); }
+        } else if (fk === 3 || fk === 4) { // mirtilos / uvas: frutinhas redondas com brilho
+          var bc = BASE[fk]; ctx.fillStyle = D(bc, 0.45); ctx.fillRect(x, y, w, w);
+          var pts = fk === 3 ? [[0.3, 0.32, 0.22], [0.7, 0.34, 0.2], [0.34, 0.72, 0.21], [0.72, 0.72, 0.22]] : [[0.3, 0.28, 0.17], [0.62, 0.26, 0.17], [0.46, 0.5, 0.17], [0.24, 0.66, 0.16], [0.7, 0.62, 0.17], [0.48, 0.8, 0.15]];
+          pts.forEach(function (q) { var bx = x + w * q[0], by = y + w * q[1], br = w * q[2], bg2 = ctx.createRadialGradient(bx - br * 0.35, by - br * 0.35, br * 0.1, bx, by, br); bg2.addColorStop(0, L(bc, 0.45)); bg2.addColorStop(1, bc);
+            ctx.fillStyle = bg2; ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(bx - br * 0.35, by - br * 0.35, br * 0.22, 0, 7); ctx.fill();
+            if (fk === 3) { ctx.strokeStyle = D(bc, 0.5); ctx.lineWidth = Math.max(0.8, s * 0.02); ctx.beginPath(); ctx.moveTo(bx - br * 0.25, by - br * 0.1); ctx.lineTo(bx + br * 0.25, by - br * 0.1); ctx.moveTo(bx, by - br * 0.35); ctx.lineTo(bx, by + br * 0.15); ctx.stroke(); } });
+        } else { // morango: vermelho com sementinhas e folhas no topo
+          var sg = ctx.createLinearGradient(x, y, x, y + w); sg.addColorStop(0, L(BASE[5], 0.15)); sg.addColorStop(1, D(BASE[5], 0.25)); ctx.fillStyle = sg; ctx.fillRect(x, y, w, w);
+          ctx.fillStyle = '#ffe680'; for (var ry = 0; ry < 4; ry++) for (var rx = 0; rx < 4; rx++) { ctx.beginPath(); ctx.ellipse(x + w * (0.16 + rx * 0.23 + (ry % 2) * 0.1), y + w * (0.34 + ry * 0.18), w * 0.02, w * 0.035, 0, 0, 7); ctx.fill(); }
+          ctx.fillStyle = '#2f9e44'; for (i = 0; i < 5; i++) { var al = Math.PI + i * Math.PI / 4; ctx.beginPath(); ctx.ellipse(cxf + Math.cos(al) * w * 0.14, y + w * 0.1 + Math.sin(al) * w * 0.02, w * 0.14, w * 0.05, al, 0, 7); ctx.fill(); }
+        }
+        var gl2 = ctx.createLinearGradient(0, y, 0, y + w * 0.35); gl2.addColorStop(0, 'rgba(255,255,255,.35)'); gl2.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = gl2; ctx.fillRect(x, y, w, w * 0.35);
+        ctx.restore();
+        rr(ctx, x, y, w, w, rf); ctx.strokeStyle = 'rgba(40,20,10,.55)'; ctx.lineWidth = Math.max(1, s * 0.045); ctx.stroke();
+        break;
+      }
       case 'pixel': {
         var n = 4, ps = w / n;
         for (var py = 0; py < n; py++) for (var px2 = 0; px2 < n; px2++) {
@@ -536,6 +591,8 @@
   function drawBreak(ctx, sprite, skin, theme, ci, cx, cy, s, tt, seed) {
     if (!BREAK_MS[skin]) return false;
     var col = matCol(skin, theme, ci), i, u, a;
+    if (skin === 'car') skin = 'metal'; // v1.27: lataria — anel de impacto e faíscas (na cor da pintura)
+    else if (skin === 'food') { col = ['#ff5a6e', '#ffe14d', '#7ac943', '#3d5bd9', '#8e44c9', '#ff4f7b', '#ff9a1f'][ci % 7]; skin = 'jelly'; } // v1.27: a fruta espirra suco
     ctx.save();
     if (skin === 'ice' || skin === 'crystal') { // cristal estilhaça como gelo
       if (tt < 0.25) {
@@ -877,7 +934,8 @@
       glossy: ['#123a7a', '#050f2a'], crystal: ['#24315e', '#0b1026'], metal: ['#3c4654', '#12161c'], gradient: ['#4a1c6e', '#0f1b4a'],
       galaxy: ['#1b0f45', '#03020c'], energy: ['#003a4a', '#00080f'], rainbow: ['#3a1257', '#0c2340'], holo: ['#25205a', '#0a2a3a'],
       lava: ['#5a1404', '#140200'], gold: ['#4a3606', '#140d00'], marble: ['#3e3b45', '#141218'], circuit: ['#06302a', '#010d0b'],
-      bubble: ['#3a2a4a', '#0e0a14'], ocean: ['#0b4f6e', '#021624'], cheese: ['#5a3a0a', '#1e1204'], wool: ['#4a2a3a', '#170d14'], stained: ['#3d0f3a', '#0e1838']
+      bubble: ['#3a2a4a', '#0e0a14'], ocean: ['#0b4f6e', '#021624'], cheese: ['#5a3a0a', '#1e1204'], wool: ['#4a2a3a', '#170d14'], stained: ['#3d0f3a', '#0e1838'],
+      car: ['#2a2f3a', '#0b0d12'], food: ['#3a5a1a', '#121e06']
     },
     /** v1.16: desenho discreto do fundo para cada estilo (estilo escolhido OU transformação). Só CSS parado
      *  (sem animação, custo quase zero); fica atrás de tudo, nunca sobre o tabuleiro. Motivos compartilhados por família. */
@@ -893,12 +951,13 @@
       var glow = 'radial-gradient(90% 60% at 50% 50%, transparent 55%, rgba(0,0,0,.35) 100%)';
       return { ocean: bubbles, jelly: bubbles, bubble: bubbles, glossy: bubbles, neon: lines, circuit: lines, pixel: lines, energy: lines,
         stone: rock, marble: rock, metal: rock, crystal: frost, ice: frost, candy: sprinkles, wood: grain,
-        cheese: sprinkles, wool: glow, galaxy: stars, holo: stars, rainbow: stars, gradient: stars, lava: heat, gold: heat, fur: glow, stained: glow };
+        cheese: sprinkles, wool: glow, car: lines, food: sprinkles, galaxy: stars, holo: stars, rainbow: stars, gradient: stars, lava: heat, gold: heat, fur: glow, stained: glow };
     })(),
     /** v1.16: estilos com desenho marcado são espelhados conforme a casa, para não parecer carimbo repetido. */
     VARY: { lava: 1, energy: 1, stone: 1, marble: 1, wood: 1, ocean: 1, crystal: 1, circuit: 1 },
     ids: LIST.map(function (s) { return s.id; }),
     rareIds: LIST.filter(function (s) { return s.rare; }).map(function (s) { return s.id; }),
+    prizeIds: LIST.filter(function (s) { return s.prize; }).map(function (s) { return s.id; }), // v1.27: estilos prêmio de nível
     isCustom: function (id) { return !!BREAK_MS[id]; },          // tem quebra própria
     hasArt: function (id) { return id !== 'classic' && id !== 'theme' && LIST.some(function (x) { return x.id === id; }); }, // desenho próprio
     isLive: function (id) { return !!LIVE[id]; },

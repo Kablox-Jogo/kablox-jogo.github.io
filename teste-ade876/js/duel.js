@@ -270,7 +270,22 @@
 
   /* ---------- desenho dos blocos (estilo quadrinhos: brilho 3D + contorno preto) ---------- */
   function rr(c, x, y, w, hh, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + hh, r); c.arcTo(x + w, y + hh, x, y + hh, r); c.arcTo(x, y + hh, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
-  function block(c, x, y, s, who, alpha) {
+  /* v1.31 (dono): o jogador usa uma medalha lendária conquistada como bloco, só na Ranqueada (e no treino contra o robô).
+     Só os blocos dele mudam; os do rival continuam azuis com losango. Desenho guardado pronto (sem custo por quadro). */
+  var skinCache = {};
+  function skinId() {
+    var id = G.settings && G.settings.duelSkin, st = G.stats || {};
+    if (!id || sofa || online || !window.MZLegend || !MZLegend.byId(id) || !(st.legends && st.legends[id])) return '';
+    return id;
+  }
+  function skinTile(id, s) {
+    var px = Math.max(8, Math.round(s * dpr())), k = id + ':' + px, cv = skinCache[k];
+    if (!cv) { cv = document.createElement('canvas'); cv.width = cv.height = px; MZLegend.draw(cv.getContext('2d'), id, 0, 0, px, 0, { seed: 0, lite: true }); skinCache[k] = cv; }
+    return cv;
+  }
+  function block(c, x, y, s, who, alpha, plain) {
+    var sk = who === 0 && !plain ? skinId() : '';
+    if (sk) { c.save(); c.globalAlpha = alpha == null ? 1 : alpha; c.drawImage(skinTile(sk, s), x, y, s, s); c.restore(); return; }
     if (flipped()) who = 1 - who;
     var p = PAL[who], r = Math.max(3, s * 0.2), g = c.createLinearGradient(x, y, x + s * 0.5, y + s);
     g.addColorStop(0, p[0]); g.addColorStop(0.55, p[1]); g.addColorStop(1, p[2]);
@@ -287,6 +302,32 @@
   }
   function emptyCell(c, x, y, s) { rr(c, x + 1, y + 1, s - 2, s - 2, Math.max(3, s * 0.2)); c.fillStyle = '#162033'; c.fill(); c.strokeStyle = 'rgba(255,255,255,.05)'; c.lineWidth = 1; c.stroke(); }
 
+  /** v1.31: escolher o bloco da Ranqueada — Padrão ou uma medalha lendária já conquistada. */
+  function skinPicker() {
+    var sec = h('section', 'm-sec duel-skin'), have = (G.stats && G.stats.legends) || {}, row = h('div', 'duel-skin-row');
+    sec.appendChild(h('h3', '', T('Seu bloco na Ranqueada')));
+    var cur = skinId();
+    function tile(id, name, locked) {
+      var b = h('button', 'duel-skin-b' + (cur === id ? ' on' : '') + (locked ? ' locked' : ''));
+      b.type = 'button'; b.setAttribute('aria-label', name); b.setAttribute('aria-pressed', cur === id ? 'true' : 'false'); b.disabled = !!locked;
+      var cv = h('canvas'); cv.width = cv.height = 40 * dpr(); cv.style.width = cv.style.height = '40px';
+      var g = cv.getContext('2d'); g.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+      if (id) MZLegend.draw(g, id, 0, 0, 40, 0, { seed: 0, lite: true }); else block(g, 0, 0, 40, 0, 1, true);
+      b.appendChild(cv);
+      if (locked) b.appendChild(h('span', 'duel-skin-lock', '🔒'));
+      b.addEventListener('click', function () {
+        G.settings.duelSkin = id; G.saveSettings(); if (G.sound.tap) G.sound.tap(); cur = id;
+        Array.prototype.forEach.call(row.children, function (x) { var on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      });
+      return b;
+    }
+    row.appendChild(tile('', T('Padrão'), false));
+    MZLegend.LIST.forEach(function (l) { row.appendChild(tile(l.id, T(l.name), !have[l.id])); });
+    sec.appendChild(row);
+    var got = MZLegend.LIST.filter(function (l) { return have[l.id]; }).length;
+    sec.appendChild(h('p', 'duel-skin-hint', got ? T('Só os seus blocos mudam. O rival continua azul.') : T('Conquiste medalhas lendárias no Clássico para usar como bloco aqui.')));
+    return sec;
+  }
   function now() { return performance.now(); }
   function renderBoard() {
     if (!bctx || !match) return;
@@ -606,7 +647,7 @@
     var resH = ov.querySelector('.duel-result.win');
     if (resH && G.flags.hype && window.MZHype) { // v1.30 (chave das falas): vitória com letras pulando e a voz do apresentador
       var wTxt = resH.textContent; resH.textContent = ''; resH.classList.add('hype', 't4'); resH.appendChild(MZHype.build(document, wTxt, 4));
-      if (G.shout) G.shout('vitoria', 'Vitória!'); // v1.31: voz gravada do locutor (ou a do celular)
+      if (G.shout && (sofa || online)) G.shout('vitoria', 'Vitória!'); // v1.31: voz do locutor só jogando com amigos (dono: a Ranqueada é concentração total)
     }
     var sc = h('div', 'duel-final'), ms = mySide();
     sc.appendChild(h('span', 'me', G.fmt(match.score[ms]))); sc.appendChild(h('small', '', '×')); sc.appendChild(h('span', 'rival', G.fmt(match.score[1 - ms])));
@@ -685,6 +726,7 @@
     });
     hero.appendChild(go);
     rootEl.appendChild(hero);
+    if (window.MZLegend && G.flags.legends) rootEl.appendChild(skinPicker());
 
     var how = h('details', 'm-sec duel-how'); // v1.30 (dono: menos poluição): regras recolhidas, abrem ao tocar
     how.appendChild(h('summary', '', T('Como funciona')));

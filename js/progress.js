@@ -217,7 +217,12 @@
   var ACHIEVEMENTS = [
     // v1.25 (dono): prêmios da Semana do Terror 2026 — conquistas para sempre
     { id: 'bat_hunter', name: 'Caçador de Morcegos', desc: 'Liberte 40 morcegos no desafio da Semana do Terror', of: function (s) { return [s.rares && s.rares.pk ? 1 : 0, 1]; } },
+    { id: 'santa_helper', name: 'Ajudante do Noel', desc: 'Abra 40 presentes no desafio de Natal', flag: 'natal', of: function (s) { return [s.rares && s.rares.gf ? 1 : 0, 1]; } }, // v1.28 (laboratório)
     { id: 'nightmare_2026', name: 'Sobrevivente do Pesadelo', desc: 'Vença a Fase Pesadelo da Semana do Terror', of: function (s) { return [s.events && s.events.terror2026 && s.events.terror2026.nightmare ? 1 : 0, 1]; } },
+    { id: 'silent_night_2026', name: 'Estrela da Noite Feliz', desc: 'Vença a Fase Noite Feliz do Natal', flag: 'natal', of: function (s) { return [s.events && s.events.natal2026 && s.events.natal2026.nightmare ? 1 : 0, 1]; } }, // v1.28 (laboratório)
+    { id: 'storm_2026', name: 'Rei da Nevasca', desc: 'Vença a Fase Nevasca do Natal', flag: 'natal', of: function (s) { return [s.events && s.events.natal2026 && s.events.natal2026.storm ? 1 : 0, 1]; } }, // v1.29 (laboratório)
+    { id: 'tree_lit_2026', name: 'Árvore Acesa', desc: 'Acenda as 300 luzes da árvore de Natal limpando linhas em dezembro', flag: 'natal', of: function (s) { var d = s.events && s.events.natal2026; return [d ? Math.min(300, Math.floor(+d.tree || 0)) : 0, 300]; } }, // v1.29 (laboratório)
+    { id: 'advent_2026', name: 'Calendário Completo', desc: 'Abra as 25 portas do Calendário do Advento', flag: 'natal', of: function (s) { var a = s.events && s.events.natal2026 && s.events.natal2026.advent, c = 0; if (a) for (var i = 1; i <= 25; i++) if (a[i]) c++; return [c, 25]; } }, // v1.29 (laboratório)
     { id: 'first_line', name: 'Primeira linha', desc: 'Limpe sua primeira linha', of: function (s) { return [s.lines, 1]; } },
     { id: 'lines_100', name: 'Construtor', desc: 'Limpe 100 linhas no total', of: function (s) { return [s.lines, 100]; } },
     { id: 'lines_500', name: 'Arquiteto', desc: 'Limpe 500 linhas no total', of: function (s) { return [s.lines, 500]; } },
@@ -253,6 +258,12 @@
     { id: 'bubble', kind: 'skin', name: 'Bolha', need: 'Descubra numa transformação surpresa', of: function (s) { return [s.surpriseSeen.bubble ? 1 : 0, 1]; } },
     { id: 'stained', kind: 'skin', name: 'Vitral', need: 'Descubra numa transformação surpresa', of: function (s) { return [s.surpriseSeen.stained ? 1 : 0, 1]; } }
   ];
+  // v1.27 (laboratório): estilos prêmio de NÍVEL do jogador (Comida no 5, Carros no 10). Só com a chave "styles".
+  function playerLevel(s) { var S = root.MZSeason; return S && S.levelOf ? S.levelOf(s.xp || 0).level : 1; }
+  if (root.MZFlags && root.MZFlags.styles) {
+    UNLOCKS.push({ id: 'food', kind: 'skin', name: 'Comida', need: 'Chegue ao nível 5 de jogador', of: function (s) { return [playerLevel(s), 5]; } });
+    UNLOCKS.push({ id: 'car', kind: 'skin', name: 'Carros', need: 'Chegue ao nível 10 de jogador', of: function (s) { return [playerLevel(s), 10]; } });
+  }
 
   /* ---------------- estatísticas ---------------- */
   function newStats() {
@@ -355,7 +366,8 @@
   }
 
   function achievements(s) {
-    return ACHIEVEMENTS.map(function (a) {
+    var F = typeof window !== 'undefined' && window.MZFlags; // v1.28: conquista de evento ainda não aprovado fica escondida (a não ser que já tenha ganho)
+    return ACHIEVEMENTS.filter(function (a) { return !a.flag || (F && F[a.flag]) || (s.achievements && s.achievements[a.id]); }).map(function (a) {
       var v = a.of(s), cur = Math.min(v[0] || 0, v[1]);
       return { id: a.id, name: T(a.name), desc: T(a.desc), cur: cur, target: v[1], done: cur >= v[1] };
     });
