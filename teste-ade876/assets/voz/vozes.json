@@ -1,1 +1,25 @@
-{ "arquivos": [] }
+{
+ "arquivos": [
+  "pt_absurdo_m.mp3",
+  "pt_arrasou_m.mp3",
+  "pt_boa_m.mp3",
+  "pt_brabo_m.mp3",
+  "pt_epico_m.mp3",
+  "pt_fantastico_m.mp3",
+  "pt_febre_m.mp3",
+  "pt_imparavel_m.mp3",
+  "pt_incrivel_m.mp3",
+  "pt_insano_m.mp3",
+  "pt_lendario_m.mp3",
+  "pt_limpeza_perfeita_m.mp3",
+  "pt_mandou_bem_m.mp3",
+  "pt_monstro_m.mp3",
+  "pt_muito_bom_m.mp3",
+  "pt_novo_recorde_m.mp3",
+  "pt_otimo_m.mp3",
+  "pt_que_isso_m.mp3",
+  "pt_show_m.mp3",
+  "pt_suave_m.mp3",
+  "pt_vitoria_m.mp3"
+ ]
+}

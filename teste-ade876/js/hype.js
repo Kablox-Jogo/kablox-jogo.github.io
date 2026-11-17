@@ -20,7 +20,8 @@
     clear: { k: 'Limpeza perfeita!', v: 'limpeza_perfeita', t: 4 },
     record: { k: 'Novo recorde!', v: 'novo_recorde', t: 4 },
     smooth: { k: 'Suave!', v: 'suave', t: 1 },               // 3 jogadas seguidas limpando
-    fever: { k: 'Febre!', v: 'febre', t: 4 }                 // v1.30: Modo Febre (chave febre)
+    fever: { k: 'Febre!', v: 'febre', t: 4 },                // v1.30: Modo Febre (chave febre)
+    win: { k: 'Vitória!', v: 'vitoria', t: 4 }               // v1.31: venceu um duelo (só a voz; a tela do duelo tem o texto)
   };
   var last = '';
   /** Escolhe a fala. tier 1..4 = força da jogada. opts: { combo, boardClear, streak }. rng opcional (testes). */

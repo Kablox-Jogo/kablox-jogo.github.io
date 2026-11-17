@@ -296,6 +296,17 @@
         .then(function (b) { self._voiceBufs[file] = b; }).catch(function () { self._voiceBufs[file] = 'bad'; }); } catch (e) { this._voiceBufs[file] = 'bad'; } }
       return false; // primeira vez só carrega; a próxima já toca
     },
+    /** v1.31: carrega as vozes antes (ao entrar na partida), para a primeira fala já sair gravada. */
+    voicePreload: function (files) {
+      if (!ctx || !files || !files.length) return;
+      var self = this;
+      files.forEach(function (f) {
+        if (self._voiceBufs[f] || !/^[a-z]{2}_[a-z_]+_[fm]\.(mp3|m4a|ogg|wav)$/.test(f)) return;
+        self._voiceBufs[f] = 'loading';
+        try { root.fetch('assets/voz/' + f).then(function (r) { return r.arrayBuffer(); }).then(function (a) { return ctx.decodeAudioData(a); })
+          .then(function (b) { self._voiceBufs[f] = b; }).catch(function () { self._voiceBufs[f] = 'bad'; }); } catch (e) { self._voiceBufs[f] = 'bad'; }
+      });
+    },
     /* v1.30 (laboratório, chave do acabamento): sons da interface e do baú — curtos e baixinhos */
     boop: function () { this._tone(520, { to: 880, dur: 0.09, vol: 0.05, type: 'sine' }); this._tone(1040, { to: 1320, dur: 0.06, vol: 0.025, type: 'triangle', delay: 0.07 }); }, // v1.30: tocar no Kabloquinho
     uiOpen: function () { this._tone(660, { to: 990, dur: 0.07, vol: 0.03, type: 'sine' }); this._noise({ filter: 'bandpass', freq: 1800, toFreq: 3600, q: 1.2, dur: 0.06, vol: 0.015 }); },

@@ -606,7 +606,7 @@
     var resH = ov.querySelector('.duel-result.win');
     if (resH && G.flags.hype && window.MZHype) { // v1.30 (chave das falas): vitória com letras pulando e a voz do apresentador
       var wTxt = resH.textContent; resH.textContent = ''; resH.classList.add('hype', 't4'); resH.appendChild(MZHype.build(document, wTxt, 4));
-      if (G.settings.tts !== false && G.settings.sound) MZHype.Speak.say(wTxt, MZI18n.lang, 4, (G.settings.sfxVol || 70) / 100);
+      if (G.shout) G.shout('vitoria', 'Vitória!'); // v1.31: voz gravada do locutor (ou a do celular)
     }
     var sc = h('div', 'duel-final'), ms = mySide();
     sc.appendChild(h('span', 'me', G.fmt(match.score[ms]))); sc.appendChild(h('small', '', '×')); sc.appendChild(h('span', 'rival', G.fmt(match.score[1 - ms])));

@@ -612,7 +612,7 @@
     '{h} h {m} min': '{h}h {m}m',
     '{m} min': '{m}m',
     'Voz do apresentador': 'Announcer voice',
-    'O celular fala "Incrível!", "Épico!"': 'Your phone says "Amazing!", "Epic!"',
+    'O locutor grita "Incrível!", "Épico!"': 'The announcer shouts "Amazing!", "Epic!"',
     'Seções das configurações': 'Settings sections',
     'Última chance de manter o combo!': 'Last chance to keep the combo!',
     'Sequência de dias': 'Daily streak',

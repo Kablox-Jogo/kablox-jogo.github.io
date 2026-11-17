@@ -1881,12 +1881,20 @@
   function sayHype(pk, origin, sub, delayMs, quiet) { // quiet: a jogada já tem som próprio (limpeza perfeita, recorde) — só a voz gravada, se houver
     popup(MZHype.build(document, T(pk.key), pk.tier, sub), origin, 'hype t' + pk.tier, 0, false, delayMs || 0);
     later(function () {
-      var f = MZHype.Voice.fileFor(MZI18n.lang, pk.voice);
+      var f = settings.tts !== false ? MZHype.Voice.fileFor(MZI18n.lang, pk.voice) : null; // v1.31: a chave "Voz do apresentador" vale também para a voz gravada
       if (f && Sound.voice(f)) return;
       var spoke = pk.tier >= 3 && ttsOn() && MZHype.Speak.say(T(pk.key), MZI18n.lang, pk.tier, settings.sfxVol / 100); // v1.30: voz do próprio celular
       if (pk.tier >= 2 && !quiet) Sound.hype(spoke ? Math.min(3, pk.tier) : pk.tier); // com voz, sem o "uau" sintetizado por cima
     }, (delayMs || 0) + 60);
     return T(pk.key);
+  }
+  /** v1.31: o apresentador fala uma frase solta: voz gravada se houver; senão, a voz do celular (se ligada). */
+  function shout(voice, key) {
+    if (!hypeOn() || settings.tts === false || !settings.sound) return false;
+    var f = MZHype.Voice.fileFor(MZI18n.lang, voice);
+    if (f && Sound.voice(f)) return true;
+    if (ttsOn()) { MZHype.Speak.lastAt = 0; return MZHype.Speak.say(T(key), MZI18n.lang, 4, settings.sfxVol / 100); }
+    return false;
   }
   function ttsOn() { return !!FLAGS.hype && settings.tts !== false && settings.sound && !!window.MZHype && MZHype.Speak.supported(); }
   function pal(th) { return curSkin() === 'theme' ? th.palette : Themes.classic(th).palette; }
@@ -2538,6 +2546,7 @@
   }
 
   function enterBoard() {
+    if (hypeOn() && MZHype.Voice.list && Sound.voicePreload) Sound.voicePreload(MZHype.Voice.list.filter(function (f) { return f.indexOf(MZI18n.lang === 'pt' ? 'pt_' : 'en_') === 0; })); // v1.31: vozes gravadas prontas antes da 1ª fala
     boardBox.classList.remove('enter'); void boardBox.offsetWidth; boardBox.classList.add('enter');
     if (FLAGS.juice && settings.anim === 'full') { anims.push({ type: 'cascade', start: animNow() + 120, dur: 760 }); requestRender(); } // v1.30: casas entram em onda, da quina de cima
   }
@@ -2985,7 +2994,7 @@
         if (drum && !broke && v >= o.prevBest) {
           broke = true; big.classList.add('broke'); if (badgeEl) { badgeEl.classList.remove('wait'); badgeEl.classList.add('pop'); }
           celebrate(); Sound.record(); haptic('celebrate');
-          if (ttsOn()) { MZHype.Speak.lastAt = 0; MZHype.Speak.say(T('Novo recorde!'), MZI18n.lang, 4, settings.sfxVol / 100); } // v1.30: o apresentador grita o recorde
+          shout('novo_recorde', 'Novo recorde!'); // v1.30: o apresentador grita o recorde (v1.31: voz gravada, se houver)
         }
         if (k < 1 && document.contains(big)) requestAnimationFrame(step);
       })();
@@ -3460,7 +3469,7 @@
     $('#set-music-vol').value = settings.musicVol; $('#out-music-vol').textContent = settings.musicVol + '%';
     $('#set-sound').checked = settings.sound;
     $('#set-music').checked = settings.music;
-    if ($('#set-tts')) { $('#set-tts').checked = settings.tts !== false; $('#row-tts').hidden = !(FLAGS.hype && window.MZHype && MZHype.Speak.supported()) || !settings.sound; }
+    if ($('#set-tts')) { $('#set-tts').checked = settings.tts !== false; $('#row-tts').hidden = !(FLAGS.hype && window.MZHype && (MZHype.Speak.supported() || (MZHype.Voice.list && MZHype.Voice.list.length))) || !settings.sound; }
     $('#set-vibrate').checked = settings.vibrate;
     if ($('#set-kbq')) { $('#set-kbq').checked = settings.kbq !== false; $('#row-kbq').hidden = !FLAGS.mascote; }
     $('#set-symbols').checked = !!settings.symbols;
@@ -3487,7 +3496,7 @@
   $('#set-music').addEventListener('change', function (e) { settings.music = e.target.checked; saveSettings(); Sound.unlock(); applySettings(); });
   if ($('#set-tts')) $('#set-tts').addEventListener('change', function (e) { // v1.30: ao ligar, fala uma vez para a pessoa ouvir
     settings.tts = e.target.checked; saveSettings(); applySettings();
-    if (settings.tts && window.MZHype) { MZHype.Speak.lastAt = 0; MZHype.Speak.say(T('Incrível!'), MZI18n.lang, 3, settings.sfxVol / 100); }
+    if (settings.tts && window.MZHype) { var vf = MZHype.Voice.fileFor(MZI18n.lang, 'incrivel'); if (vf && Sound.voicePreload) Sound.voicePreload([vf]); setTimeout(function () { shout('incrivel', 'Incrível!'); }, vf ? 250 : 0); } // v1.31: voz gravada, se houver
   });
   if (window.MZHype) MZHype.Speak.warm();
   ['sfx', 'music'].forEach(function (k) {
@@ -3952,7 +3961,7 @@
   window.GB = {
     VERSION: VERSION, Progress: Progress, THEMES: THEMES, Skins: Skins,
     get stats() { return stats; }, get settings() { return settings; }, flags: FLAGS, loadArt: loadArt, openStreak: openStreak, get themeIdx() { return themeIdx; },
-    fmt: fmt, today: today, store: store, saveStats: saveStats, toast: toast, sound: Sound,
+    fmt: fmt, today: today, store: store, saveStats: saveStats, toast: toast, sound: Sound, shout: shout,
     startGame: startGame, startTutorial: startTutorial, hasSave: hasSave, bestFor: bestFor, challengeDef: challengeDef,
     confirmReplace: confirmReplace, openChallengeIntro: openChallengeIntro, showDialog: showDialog, closeDialog: closeDialog,
     show: show, goHome: goHome, openSettings: function () { settingsReturn = null; openOverlay('#ov-settings'); },
