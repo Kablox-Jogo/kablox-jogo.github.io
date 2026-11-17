@@ -777,7 +777,7 @@
     }
     rootEl.appendChild(on);
     } finally { rootEl = realRoot; } // mesmo se algo falhar, o resto do jogo volta a desenhar na tela certa
-    if (lobbyKind === 'ranked') rootEl.appendChild(h('p', 'duel-lab', T('Laboratório: a Ranqueada é contra robôs. Para jogar contra pessoas, use "Jogar com amigos" na tela inicial.')));
+    if (lobbyKind === 'ranked') rootEl.appendChild(h('p', 'duel-lab', T('A Ranqueada é contra robôs. Para jogar contra pessoas, use "Amigos" na tela inicial.')));
     pick(lobbyKind);
   }
 

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.31.0';
+  var VERSION = '1.31.1';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise, Season = window.MZSeason, Weekly = window.MZWeekly, Events = window.MZEvents;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   /* v1.24 (reclamação dos jogadores: "tabuleiro quase transparente, machuca a vista"): contraste mínimo garantido em

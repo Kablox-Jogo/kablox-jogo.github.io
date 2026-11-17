@@ -584,7 +584,7 @@
     'Online: cada um no seu celular': 'Online: each on their own phone',
     'Amigos': 'Friends',
     'Jogar juntos': 'Play together',
-    'Laboratório: a Ranqueada é contra robôs. Para jogar contra pessoas, use "Jogar com amigos" na tela inicial.': 'Lab: Ranked is against bots. To play against people, use "Play with friends" on the home screen.',
+    'A Ranqueada é contra robôs. Para jogar contra pessoas, use "Amigos" na tela inicial.': 'Ranked is against bots. To play against people, use "Friends" on the home screen.',
     'Medalha lendária: {name}!': 'Legendary medal: {name}!',
     'É sua para sempre. Veja na Coleção.': 'Yours forever. See it in your Collection.',
     'Medalha lendária conquistada!': 'Legendary medal earned!',
