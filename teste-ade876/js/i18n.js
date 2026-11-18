@@ -738,7 +738,7 @@
     'Leves': 'Light', 'Mínimos': 'Minimal', 'Mais opções de visual': 'More visual options',
     '✨ Versão nova!': '✨ New version!', 'Ver novidades': "See what's new", 'Agora não': 'Not now', 'O que há de novo': "What's new", 'Legal!': 'Nice!', 'Novidades': "What's new",
     '📳 Testar vibração': '📳 Test vibration', 'Pedido de vibração enviado': 'Vibration request sent',
-    'Sentiu? Se não, o celular está bloqueando: confira o modo Não perturbe, a economia de bateria e a vibração nas configurações do aparelho.': 'Feel it? If not, your phone is blocking it: check Do Not Disturb, battery saver and vibration in the device settings.',
+    'Sentiu? Se não: tire o celular do modo silencioso (no Android o Chrome não vibra no silencioso) e confira o Não perturbe, a economia de bateria e a vibração das notificações.': 'Feel it? If not: take your phone off silent mode (on Android, Chrome does not vibrate in silent mode) and check Do Not Disturb, battery saver and notification vibration.',
     'Este navegador não deixou vibrar': 'This browser did not allow vibration', 'Abra o jogo pelo app instalado ou pelo Chrome. No iPhone não é possível vibrar.': 'Open the game from the installed app or Chrome. iPhones cannot vibrate from web games.',
     'Combo máx. ×{n}': 'Max combo ×{n}', 'Me bate se for capaz!': 'Beat me if you can!', 'Jogue grátis: {url}': 'Play free: {url}',
     'Imagem salva!': 'Image saved!', 'Está na sua galeria ou em Downloads — poste no story e desafie os amigos.': 'It is in your gallery or Downloads — post it to your story and challenge your friends.',

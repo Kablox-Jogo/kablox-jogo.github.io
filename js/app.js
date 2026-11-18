@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.31.1';
+  var VERSION = '1.31.2';
   var Logic = window.MZLogic, Themes = window.MZThemes, Sound = window.MZSound, Skins = window.MZSkins, Progress = window.MZProgress, Fx = window.MZFx, Surprise = window.MZSurprise, Season = window.MZSeason, Weekly = window.MZWeekly, Events = window.MZEvents;
   var SIZE = Logic.SIZE, SHAPES = Logic.SHAPES, THEMES = Themes.THEMES;
   /* v1.24 (reclamação dos jogadores: "tabuleiro quase transparente, machuca a vista"): contraste mínimo garantido em
@@ -107,7 +107,10 @@
   // de muitos celulares Android. Cada pulso agora tem no mínimo 25 ms (as pausas do padrão continuam como estão).
   // v1.22 (Entrega 1, pedido do dono): cada momento tem seu "jeito" de vibrar + força leve/normal/forte.
   // No navegador só dá para controlar a DURAÇÃO (não a força do motor): a força escolhida alonga ou encurta os pulsos.
-  var VIB = { light: { k: 0.6, min: 18 }, normal: { k: 1, min: 25 }, strong: { k: 1.6, min: 32 } };
+  // v1.31.2 (dono: "a vibração não funciona no meu celular"): pulsos mais longos — motores lineares de celulares novos
+  // (Xiaomi, Samsung) quase não mostram toques de 25 ms vindos do navegador. Obs.: no Android o Chrome NÃO vibra com o
+  // celular no modo silencioso (regra do próprio Chrome); o botão "Testar vibração" avisa isso.
+  var VIB = { light: { k: 0.9, min: 30 }, normal: { k: 1.4, min: 45 }, strong: { k: 2, min: 65 } };
   function vibPattern(p) {
     var v = VIB[settings.vibStrength] || VIB.normal;
     var one = function (ms) { return Math.max(v.min, Math.round(ms * v.k)); };
@@ -3530,8 +3533,8 @@
   // o bloqueio é do sistema do celular (Não perturbe, economia de bateria, vibração desligada nas configurações).
   $('#btn-vib-test').addEventListener('click', function () {
     var okv = false;
-    try { okv = !!navigator.vibrate && navigator.vibrate(vibPattern([200, 120, 200])); } catch (e) {}
-    if (okv) toast(T('Pedido de vibração enviado'), T('Sentiu? Se não, o celular está bloqueando: confira o modo Não perturbe, a economia de bateria e a vibração nas configurações do aparelho.'));
+    try { okv = !!navigator.vibrate && navigator.vibrate(vibPattern([300, 150, 300])); } catch (e) {}
+    if (okv) toast(T('Pedido de vibração enviado'), T('Sentiu? Se não: tire o celular do modo silencioso (no Android o Chrome não vibra no silencioso) e confira o Não perturbe, a economia de bateria e a vibração das notificações.'));
     else toast(T('Este navegador não deixou vibrar'), T('Abra o jogo pelo app instalado ou pelo Chrome. No iPhone não é possível vibrar.'));
   });
   Array.prototype.forEach.call(document.querySelectorAll('input[name="preset"]'), function (r) {

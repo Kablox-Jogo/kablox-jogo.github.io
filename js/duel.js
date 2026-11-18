@@ -26,7 +26,7 @@
     // pontos de ranqueada
     // v1.28: rating no estilo do xadrez (Elo), mais generoso: vitória vale mais do que a derrota tira, e um "piso"
     // (você nunca cai abaixo do começo da maior divisão que já alcançou). Começa em 800.
-    elo: { start: 800, kWin: 40, kLoss: 22, kWinPro: 32, kLossPro: 18, proGames: 20, minWin: 6, maxLoss: 26, margin: 5 },
+    elo: { start: 800, kWin: 40, kLoss: 22, kWinPro: 32, kLossPro: 18, proGames: 20, minWin: 6, maxLoss: 26, margin: 5, easyBelow: 1000, easyLoss: 0.5 }, // v1.31.2: no Ferro e no Bronze a derrota tira só metade
     // cada divisão tem o seu robô (rating = começo da divisão + 60), cada um um pouco mais forte que o anterior
     divisions: [
       { id: 'iron', min: 0 }, { id: 'bronze', min: 900 }, { id: 'silver', min: 1000 }, { id: 'gold', min: 1100 },
@@ -170,15 +170,20 @@
     return n;
   }
   /** Perfil do robô para um nível com fração (0 = Novato … 4 = Lenda): mistura os dois perfis vizinhos. */
+  // v1.31.2 (dono, 18/11: "o pessoal tá preso no Ferro"): abaixo do Novato existe o APRENDIZ (nível −1): joga muito
+  // ao acaso e não pensa no rival. Níveis entre −1 e 0 misturam Aprendiz e Novato. Só os robôs do Ferro e do Bronze usam.
+  var EASY = { noise: 420, random: 0.6, threat: 0, block: 0, mob: 0 };
   function botCfg(level) {
-    var L = Math.max(0, Math.min(BOT.length - 1, +level || 0)), i = Math.min(BOT.length - 2, Math.floor(L)), f = L - i, a = BOT[i], b = BOT[i + 1], o = {};
+    var lv = +level || 0;
+    if (lv < 0) { var e = Math.min(1, -lv), o0 = {}; Object.keys(BOT[0]).forEach(function (k) { o0[k] = BOT[0][k] + (EASY[k] - BOT[0][k]) * e; }); return o0; }
+    var L = Math.max(0, Math.min(BOT.length - 1, lv)), i = Math.min(BOT.length - 2, Math.floor(L)), f = L - i, a = BOT[i], b = BOT[i + 1], o = {};
     Object.keys(a).concat(Object.keys(b)).forEach(function (k) { var x = a[k] || 0, y = b[k] || 0; o[k] = x + (y - x) * f; });
     return o;
   }
   /** Nível (0–4, com fração) do robô de cada divisão: 10 robôs do mais fácil ao mais difícil. */
   // Nível do robô de cada divisão (0 Novato … 4 Lenda). Do Diamante para cima o robô já joga perto do máximo,
   // então ele ganha uma VANTAGEM de pontos no começo (como dar vantagem no xadrez) — aparece na tela.
-  var DIV_LEVEL = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4];
+  var DIV_LEVEL = [-1, -0.5, 0, 0.6, 1.2, 1.9, 2.6, 3.4, 4, 4]; // v1.31.2: começo mais suave (antes 0, 0,5, 1, 1,5, 2, 2,5, 3, 3,5, 4, 4)
   var DIV_HANDICAP = [0, 0, 0, 0, 0, 0, 0, 100, 200, 350]; // conferido em tools/duel_sim.js: cada divisão vence a anterior
   function handicapOfDiv(i) { return DIV_HANDICAP[Math.max(0, Math.min(DIV_HANDICAP.length - 1, i | 0))]; }
   function botLevelOfDiv(i) { return DIV_LEVEL[Math.max(0, Math.min(DIV_LEVEL.length - 1, i | 0))]; }
@@ -214,7 +219,7 @@
   function eloDelta(result, me, rival, games, myScore, rivalScore) {
     var E = CONFIG.elo, ex = expected(me, rival), pro = (games || 0) >= E.proGames;
     if (result > 0) return Math.max(E.minWin, Math.round((pro ? E.kWinPro : E.kWin) * (1 - ex))) + Math.min(E.margin, Math.floor(Math.max(0, myScore - rivalScore) / 300));
-    if (result < 0) return -Math.min(E.maxLoss, Math.max(1, Math.round((pro ? E.kLossPro : E.kLoss) * ex)));
+    if (result < 0) return -Math.min(E.maxLoss, Math.max(1, Math.round((pro ? E.kLossPro : E.kLoss) * ex * (me < E.easyBelow ? E.easyLoss : 1))));
     return Math.round((pro ? E.kWinPro : E.kWin) * (0.5 - ex) * 0.6);
   }
   /** Piso: o começo da maior divisão já alcançada (a divisão inicial não tem piso abaixo do começo). */
